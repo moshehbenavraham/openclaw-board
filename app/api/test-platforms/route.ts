@@ -17,23 +17,26 @@ interface PlatformTestResult {
 
 // Find the most recent feishu DM user open_id for a given agent
 // Each feishu app has its own open_id namespace, so we must use per-agent open_ids
-function getFeishuDmUsers(agentId: string): string[] {
+function getFeishuDmUser(agentId: string): string | null {
   try {
     const sessionsPath = path.join(OPENCLAW_HOME, `agents/${agentId}/sessions/sessions.json`);
     const raw = fs.readFileSync(sessionsPath, "utf-8");
     const sessions = JSON.parse(raw);
-    const users: { id: string; time: number }[] = [];
+    let bestId: string | null = null;
+    let bestTime = 0;
     for (const [key, val] of Object.entries(sessions)) {
       const m = key.match(/^agent:[^:]+:feishu:direct:(ou_[a-f0-9]+)$/);
       if (m) {
-        users.push({ id: m[1], time: (val as any).updatedAt || 0 });
+        const updatedAt = (val as any).updatedAt || 0;
+        if (updatedAt > bestTime) {
+          bestTime = updatedAt;
+          bestId = m[1];
+        }
       }
     }
-    // Sort by updatedAt descending, return all open_ids
-    users.sort((a, b) => b.time - a.time);
-    return users.map((u) => u.id);
+    return bestId;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -44,7 +47,7 @@ async function testFeishu(
   appId: string,
   appSecret: string,
   domain: string,
-  testUserIds: string[]
+  testUserId: string | null
 ): Promise<PlatformTestResult> {
   const baseUrl = domain === "lark" ? "https://open.larksuite.com" : "https://open.feishu.cn";
   const startTime = Date.now();
@@ -90,8 +93,8 @@ async function testFeishu(
 
     const botName = botData.bot.bot_name || accountId;
 
-    // Step 3: send a real DM to test user (try each open_id until one works)
-    if (testUserIds.length === 0) {
+    // Step 3: send a real DM to test user
+    if (!testUserId) {
       return {
         agentId, platform: "feishu", accountId, ok: true,
         detail: `${botName} (bot reachable, no DM session found)`,
@@ -100,52 +103,39 @@ async function testFeishu(
     }
 
     const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
-    for (const testUserId of testUserIds) {
-      try {
-        const msgResp = await fetch(
-          `${baseUrl}/open-apis/im/v1/messages?receive_id_type=open_id`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              receive_id: testUserId,
-              msg_type: "text",
-              content: JSON.stringify({ text: `[Platform Test] ${botName} 联通测试 ✅ (${now})` }),
-            }),
-            signal: AbortSignal.timeout(15000),
-          }
-        );
-
-        const msgData = await msgResp.json();
-        if (msgData.code === 0) {
-          return {
-            agentId, platform: "feishu", accountId, ok: true,
-            detail: `${botName} → DM sent (${Date.now() - startTime}ms)`,
-            elapsed: Date.now() - startTime,
-          };
-        }
-        // If cross-app error, try next open_id
-        if (msgData.code === 99992361) continue;
-        // Other error, return it
-        return {
-          agentId, platform: "feishu", accountId, ok: false,
-          error: `Send DM failed: ${msgData.msg || JSON.stringify(msgData)}`,
-          elapsed: Date.now() - startTime,
-        };
-      } catch {
-        continue;
+    const msgResp = await fetch(
+      `${baseUrl}/open-apis/im/v1/messages?receive_id_type=open_id`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receive_id: testUserId,
+          msg_type: "text",
+          content: JSON.stringify({ text: `[Platform Test] ${botName} 联通测试 ✅ (${now})` }),
+        }),
+        signal: AbortSignal.timeout(15000),
       }
-    }
+    );
 
-    // All open_ids failed
-    return {
-      agentId, platform: "feishu", accountId, ok: false,
-      error: `Send DM failed: all open_ids returned cross-app error`,
-      elapsed: Date.now() - startTime,
-    };
+    const msgData = await msgResp.json();
+    const elapsed = Date.now() - startTime;
+
+    if (msgData.code === 0) {
+      return {
+        agentId, platform: "feishu", accountId, ok: true,
+        detail: `${botName} → DM sent (${elapsed}ms)`,
+        elapsed,
+      };
+    } else {
+      return {
+        agentId, platform: "feishu", accountId, ok: false,
+        error: `Send DM failed: ${msgData.msg || JSON.stringify(msgData)}`,
+        elapsed,
+      };
+    }
   } catch (err: any) {
     return {
       agentId, platform: "feishu", accountId, ok: false,
@@ -343,13 +333,13 @@ export async function POST() {
 
       if (account && account.appId && account.appSecret && !testedFeishuAccounts.has(accountId)) {
         testedFeishuAccounts.add(accountId);
-        const testUserIds = getFeishuDmUsers(id);
-        platformTests.push(testFeishu(id, accountId, account.appId, account.appSecret, feishuDomain, testUserIds));
+        const testUserId = getFeishuDmUser(id);
+        platformTests.push(testFeishu(id, accountId, account.appId, account.appSecret, feishuDomain, testUserId));
       } else if (!feishuBinding && !account) {
         if (id === "main" && feishuConfig.enabled && feishuConfig.appId && feishuConfig.appSecret && !testedFeishuAccounts.has("main")) {
           testedFeishuAccounts.add("main");
-          const testUserIds = getFeishuDmUsers("main");
-          platformTests.push(testFeishu(id, "main", feishuConfig.appId, feishuConfig.appSecret, feishuDomain, testUserIds));
+          const testUserId = getFeishuDmUser("main");
+          platformTests.push(testFeishu(id, "main", feishuConfig.appId, feishuConfig.appSecret, feishuDomain, testUserId));
         }
       }
 
@@ -366,12 +356,10 @@ export async function POST() {
     const gatewayToken = config.gateway?.auth?.token || "";
 
     // Phase 2: Agent session tests via chatCompletions API (sequential)
-    // Uses x-openclaw-session-key to route messages to feishu DM sessions
+    // Uses agent main session to avoid polluting feishu DM session updatedAt
     const agentResults: PlatformTestResult[] = [];
     for (const id of agentIds) {
-      const dmUsers = getFeishuDmUsers(id);
-      const dmUser = dmUsers.length > 0 ? dmUsers[0] : null;
-      const sessionKey = dmUser ? `agent:${id}:feishu:direct:${dmUser}` : undefined;
+      const sessionKey = `agent:${id}:main`;
       const r = await testAgentSession(id, sessionKey, gatewayPort, gatewayToken);
       agentResults.push({
         agentId: r.agentId,
