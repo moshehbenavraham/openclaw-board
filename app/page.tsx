@@ -270,23 +270,21 @@ function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTe
       </div>
 
       <div className="space-y-2">
-        {agent.name !== agent.id && (
-          <div>
-            <span className="text-xs text-[var(--text-muted)] block mb-1">Agent ID</span>
-            <div className="flex items-center gap-2">
-              <code className="text-xs text-[var(--accent)] bg-[var(--bg)] px-2 py-0.5 rounded">{agent.id}</code>
-              {sessionTestResult === undefined ? (
-                <span className="text-xs text-[var(--text-muted)]">--</span>
-              ) : sessionTestResult === null ? (
-                <span className="text-xs text-[var(--text-muted)] animate-pulse">⏳</span>
-              ) : sessionTestResult.ok ? (
-                <span className="text-green-400 text-sm cursor-help" title={`${sessionTestResult.elapsed}ms${sessionTestResult.reply ? ' · ' + sessionTestResult.reply : ''}`}>✅</span>
-              ) : (
-                <span className="text-red-400 text-sm cursor-help" title={sessionTestResult.error || ''}>❌</span>
-              )}
-            </div>
+        <div>
+          <span className="text-xs text-[var(--text-muted)] block mb-1">Agent ID</span>
+          <div className="flex items-center gap-2">
+            <code className="text-xs text-[var(--accent)] bg-[var(--bg)] px-2 py-0.5 rounded">{agent.id}</code>
+            {sessionTestResult === undefined ? (
+              <span className="text-xs text-[var(--text-muted)]">--</span>
+            ) : sessionTestResult === null ? (
+              <span className="text-xs text-[var(--text-muted)] animate-pulse">⏳</span>
+            ) : sessionTestResult.ok ? (
+              <span className="text-green-400 text-sm cursor-help" title={`${sessionTestResult.elapsed}ms${sessionTestResult.reply ? ' · ' + sessionTestResult.reply : ''}`}>✅</span>
+            ) : (
+              <span className="text-red-400 text-sm cursor-help" title={sessionTestResult.error || ''}>❌</span>
+            )}
           </div>
-        )}
+        </div>
         <div>
           <span className="text-xs text-[var(--text-muted)] block mb-1">{t("agent.model")}</span>
           <div className="flex items-center gap-2">
