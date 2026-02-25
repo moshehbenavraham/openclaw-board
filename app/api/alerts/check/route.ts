@@ -10,6 +10,7 @@ interface AlertRule {
   name: string;
   enabled: boolean;
   threshold?: number;
+  targetAgents?: string[];
 }
 
 interface AlertConfig {

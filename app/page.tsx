@@ -274,7 +274,7 @@ function MiniSparkline({ data, width = 120, height = 24, color: fixedColor }: { 
   const id = `spark-${Math.random().toString(36).slice(2, 8)}`;
   return (
     <span className="inline-flex items-center gap-1">
-      <svg width={width} height={height} className="inline-block align-middle" title={data.map(v => v ? formatMs(v) : '-').join(' → ')}>
+      <svg width={width} height={height} className="inline-block align-middle" aria-label={data.map(v => v ? formatMs(v) : '-').join(' → ')}>
         <defs>
           <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity={0.3} />

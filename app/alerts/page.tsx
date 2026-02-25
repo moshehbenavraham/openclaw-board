@@ -16,6 +16,7 @@ interface AlertConfig {
   enabled: boolean;
   receiveAgent: string;
   rules: AlertRule[];
+  checkInterval?: number;
 }
 
 interface Agent {
