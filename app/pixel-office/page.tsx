@@ -136,7 +136,8 @@ export default function PixelOfficePage() {
   const [showModelPanel, setShowModelPanel] = useState(false)
   const [showTokenRank, setShowTokenRank] = useState(false)
   const [broadcasts, setBroadcasts] = useState<Array<{ id: number; emoji: string; text: string }>>([])
-
+  const [showActivityHeatmap, setShowActivityHeatmap] = useState(false)
+  const activityHeatmapRef = useRef<Array<{ agentId: string; grid: number[][] }> | null>(null)
   const forceEditorUpdate = useCallback(() => setEditorTick(t => t + 1), [])
 
   // Load saved layout and sound preference
@@ -279,6 +280,14 @@ export default function PixelOfficePage() {
     const img = new Image()
     img.src = '/assets/pixel-office/photograph.webp'
     img.onload = () => { photographRef.current = img }
+  }, [])
+
+  // Preload activity heatmap data
+  useEffect(() => {
+    fetch('/api/activity-heatmap')
+      .then(r => r.json())
+      .then(data => { if (data.agents) activityHeatmapRef.current = data.agents })
+      .catch(() => {})
   }, [])
 
   // Poll for agent activity + sound notification
@@ -528,9 +537,16 @@ export default function PixelOfficePage() {
         return tileX >= f.col && tileX < f.col + entry.footprintW &&
                tileY >= f.row && tileY < f.row + entry.footprintH
       })
+      const onClock = office.layout.furniture.some(f => {
+        if (f.uid !== 'clock-r') return false
+        const entry = getCatalogEntry(f.type)
+        if (!entry) return false
+        return tileX >= f.col && tileX < f.col + entry.footprintW &&
+               tileY >= f.row && tileY < f.row + entry.footprintH
+      })
       const onPhoto = photographRef.current && tileX >= 10 && tileX < 17 && tileY >= -0.5 && tileY < 1
       const onHeatmap = contributionsRef.current && contributionsRef.current.username !== 'mock' && tileX >= 1 && tileX < 10 && tileY >= -0.5 && tileY < 1
-      if (canvasRef.current) canvasRef.current.style.cursor = (onCamera || onPC || onLibrary || onWhiteboard || id !== null || onPhoto || onHeatmap) ? 'pointer' : 'default'
+      if (canvasRef.current) canvasRef.current.style.cursor = (onCamera || onPC || onLibrary || onWhiteboard || onClock || id !== null || onPhoto || onHeatmap) ? 'pointer' : 'default'
     }
   }
 
@@ -589,6 +605,21 @@ export default function PixelOfficePage() {
         })) {
           // Click on right whiteboard — show token ranking
           setShowTokenRank(true)
+        } else if (office.layout.furniture.some(f => {
+          if (f.uid !== 'clock-r') return false
+          const entry = getCatalogEntry(f.type)
+          if (!entry) return false
+          return tileX >= f.col && tileX < f.col + entry.footprintW &&
+                 tileY >= f.row && tileY < f.row + entry.footprintH
+        })) {
+          // Click on clock — show activity heatmap
+          setShowActivityHeatmap(true)
+          if (!activityHeatmapRef.current) {
+            fetch('/api/activity-heatmap')
+              .then(r => r.json())
+              .then(data => { if (data.agents) activityHeatmapRef.current = data.agents })
+              .catch(() => {})
+          }
         } else if (photographRef.current && tileX >= 10 && tileX < 17 && tileY >= -0.5 && tileY < 1) {
           // Click on wall photograph — fullscreen view
           setFullscreenPhoto(true)
@@ -1060,6 +1091,68 @@ export default function PixelOfficePage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Activity heatmap panel (clock click) */}
+        {showActivityHeatmap && !isEditMode && (() => {
+          const agentGrids = activityHeatmapRef.current
+          const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+          const hourLabels = [0, 3, 6, 9, 12, 15, 18, 21]
+          const cellSize = 14
+          const gap = 2
+          const leftPad = 36
+          const topPad = 20
+          const colors = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353']
+          const svgW = leftPad + 24 * (cellSize + gap)
+          const svgH = topPad + 7 * (cellSize + gap)
+          return (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40" onClick={() => setShowActivityHeatmap(false)}>
+              <div className="max-h-[85%] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl p-4" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-semibold text-[var(--text)]">🕐 {t('pixelOffice.heatmap.title')}</span>
+                  <button onClick={() => setShowActivityHeatmap(false)} className="text-[var(--text-muted)] hover:text-[var(--text)] text-lg leading-none">×</button>
+                </div>
+                {!agentGrids ? (
+                  <div className="text-xs text-[var(--text-muted)] py-8 text-center">{t('common.loading')}</div>
+                ) : agentGrids.length === 0 ? (
+                  <div className="text-xs text-[var(--text-muted)] py-8 text-center">{t('common.noData')}</div>
+                ) : (
+                  <div className="space-y-4">
+                    {agentGrids.map(({ agentId, grid }) => {
+                      const agent = agents.find(a => a.agentId === agentId)
+                      let maxVal = 1
+                      for (const row of grid) for (const v of row) if (v > maxVal) maxVal = v
+                      return (
+                        <div key={agentId}>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span>{agent?.emoji || '🤖'}</span>
+                            <span className="text-xs font-semibold text-[var(--text)]">{agent?.name || agentId}</span>
+                          </div>
+                          <svg width={svgW} height={svgH} className="block">
+                            {hourLabels.map(h => (
+                              <text key={h} x={leftPad + h * (cellSize + gap) + cellSize / 2} y={topPad - 6} textAnchor="middle" fontSize={9} fill="var(--text-muted)">{h}</text>
+                            ))}
+                            {dayLabels.map((label, d) => (
+                              <text key={d} x={leftPad - 4} y={topPad + d * (cellSize + gap) + cellSize / 2 + 3} textAnchor="end" fontSize={9} fill="var(--text-muted)">{label}</text>
+                            ))}
+                            {grid.map((row, d) => row.map((v, h) => {
+                              const level = v === 0 ? 0 : Math.min(4, Math.ceil((v / maxVal) * 4))
+                              return (
+                                <rect key={`${d}-${h}`} x={leftPad + h * (cellSize + gap)} y={topPad + d * (cellSize + gap)}
+                                  width={cellSize} height={cellSize} rx={2} fill={colors[level]} opacity={0.9}>
+                                  <title>{`${dayLabels[d]} ${h}:00 — ${v} ${t('pixelOffice.heatmap.messages')}`}</title>
+                                </rect>
+                              )
+                            }))}
+                          </svg>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

@@ -222,6 +222,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "pixelOffice.state.waiting": "等待中",
     "pixelOffice.broadcast.online": "上班了",
     "pixelOffice.broadcast.offline": "下班了",
+    "pixelOffice.heatmap.title": "Agent 工作时间热力图",
+    "pixelOffice.heatmap.messages": "条消息",
   },
   en: {
     // layout
@@ -440,6 +442,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "pixelOffice.state.waiting": "Waiting",
     "pixelOffice.broadcast.online": "is online",
     "pixelOffice.broadcast.offline": "is offline",
+    "pixelOffice.heatmap.title": "Agent Activity Heatmap",
+    "pixelOffice.heatmap.messages": "messages",
   },
 };
 
