@@ -720,7 +720,7 @@ export default function Home() {
   return (
     <div className="p-3 max-w-6xl mx-auto">
       {/* 头部 */}
-      <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             🤖 {t("home.pageTitle")}
@@ -729,35 +729,7 @@ export default function Home() {
             {t("models.totalPrefix")} {data.agents.length} {t("home.agentCount")} · {t("home.defaultModel")}: {data.defaults.model}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* 刷新控件 */}
-          <div className="flex items-center gap-2">
-            <select
-              value={refreshInterval}
-              onChange={(e) => setRefreshInterval(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] cursor-pointer hover:border-[var(--accent)] transition"
-            >
-              {REFRESH_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.value === 0 ? `🔄 ${opt.label}` : `⏱️ ${opt.label}`}
-                </option>
-              ))}
-            </select>
-            {refreshInterval === 0 && (
-              <button
-                onClick={fetchData}
-                disabled={loading}
-                className="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm hover:border-[var(--accent)] transition disabled:opacity-50"
-              >
-                {loading ? "⏳" : "🔄"}
-              </button>
-            )}
-          </div>
-          {lastUpdated && (
-            <span className="text-xs text-[var(--text-muted)]">
-              {t("home.updatedAt")} {lastUpdated}
-            </span>
-          )}
+        <div className="flex items-center gap-2">
           <button
             onClick={testAllAgents}
             disabled={testing}
@@ -788,10 +760,35 @@ export default function Home() {
           </button>
         </div>
       </div>
-
-      {/* Gateway 状态 */}
-      <div className="mb-1.5">
+      <div className="flex items-center justify-between mb-2">
         <GatewayStatus />
+        <div className="flex items-center gap-2">
+          <select
+            value={refreshInterval}
+            onChange={(e) => setRefreshInterval(Number(e.target.value))}
+            className="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] cursor-pointer hover:border-[var(--accent)] transition"
+          >
+            {REFRESH_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.value === 0 ? `🔄 ${opt.label}` : `⏱️ ${opt.label}`}
+              </option>
+            ))}
+          </select>
+          {refreshInterval === 0 && (
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm hover:border-[var(--accent)] transition disabled:opacity-50"
+            >
+              {loading ? "⏳" : "🔄"}
+            </button>
+          )}
+          {lastUpdated && (
+            <span className="text-xs text-[var(--text-muted)]">
+              {t("home.updatedAt")} {lastUpdated}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 卡片墙 */}
