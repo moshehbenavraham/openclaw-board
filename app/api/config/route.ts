@@ -245,6 +245,28 @@ export async function GET() {
     const fallbacks = typeof defaults.model === "object"
       ? defaults.model?.fallbacks || []
       : [];
+    const normalizeModelRef = (value: any, fallback: string): string => {
+      const pick = (v: any): string | null => {
+        if (typeof v === "string") {
+          const s = v.trim();
+          return s.length > 0 ? s : null;
+        }
+        return null;
+      };
+
+      const direct = pick(value);
+      if (direct) return direct;
+
+      if (value && typeof value === "object") {
+        const primary = pick(value.primary);
+        if (primary) return primary;
+        const def = pick(value.default);
+        if (def) return def;
+      }
+
+      const fb = pick(fallback);
+      return fb || "unknown";
+    };
 
     let agentList = config.agents?.list || [];
     const bindings = config.bindings || [];
@@ -294,8 +316,7 @@ export async function GET() {
       const identityName = readIdentityName(id, agent.agentDir, agent.workspace);
       const name = identityName || agent.name || id;
       const emoji = agent.identity?.emoji || "🤖";
-      const rawModel = agent.model || defaultModel;
-      const model = typeof rawModel === "object" ? (rawModel.primary || rawModel.default || JSON.stringify(rawModel)) : (rawModel || "");
+      const model = normalizeModelRef(agent.model, defaultModel);
 
       // 查找绑定的平台
       const platforms: { name: string; accountId?: string; appId?: string; botOpenId?: string; botUserId?: string }[] = [];
