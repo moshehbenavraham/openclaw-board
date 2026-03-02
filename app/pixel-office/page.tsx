@@ -160,7 +160,7 @@ const MOBILE_FIT_PADDING_PX = 2
 const MOBILE_TOP_EXTRA_TILES = 0.5
 const CODE_SNIPPET_LIFETIME_SEC = 5.5
 const FLOATING_TICK_INTERVAL_DESKTOP_MS = 48
-const FLOATING_TICK_INTERVAL_MOBILE_MS = 140
+const FLOATING_TICK_INTERVAL_MOBILE_MS = 32
 
 let cachedOfficeState: OfficeState | null = null
 let cachedEditorState: EditorState | null = null
@@ -476,8 +476,11 @@ export default function PixelOfficePage() {
         }
         floatingCommentsRef.current = items
         floatingCodeRef.current = codeItems
+        const hasFloating = items.length > 0 || codeItems.length > 0
         const now = performance.now()
-        const tickInterval = isMobileViewport ? FLOATING_TICK_INTERVAL_MOBILE_MS : FLOATING_TICK_INTERVAL_DESKTOP_MS
+        const tickInterval = hasFloating
+          ? (isMobileViewport ? FLOATING_TICK_INTERVAL_MOBILE_MS : FLOATING_TICK_INTERVAL_DESKTOP_MS)
+          : 180
         if (now - floatingTickUpdatedAtRef.current >= tickInterval) {
           floatingTickUpdatedAtRef.current = now
           setFloatingTick(t => t + 1)
@@ -1249,7 +1252,13 @@ export default function PixelOfficePage() {
       {/* Floating photo comment DOM bubbles */}
       {floatingCommentsRef.current.map(fc => (
         <div key={fc.key} className="absolute pointer-events-none z-30 whitespace-nowrap"
-          style={{ left: fc.x, top: fc.y, opacity: fc.opacity, transform: 'translateX(-50%)' }}>
+          style={{
+            left: 0,
+            top: 0,
+            opacity: fc.opacity,
+            transform: `translate3d(${fc.x}px, ${fc.y}px, 0) translateX(-50%)`,
+            willChange: 'transform, opacity',
+          }}>
           <span className="inline-block px-3 py-1 rounded-full text-sm font-bold"
             style={{ backgroundColor: 'rgba(0,0,0,0.8)', color: '#FFD700' }}>
             {fc.text}
@@ -1259,7 +1268,13 @@ export default function PixelOfficePage() {
       {/* Floating code snippets (working agents): rise to top, overlay top bar */}
       {floatingCodeRef.current.map(fc => (
         <div key={fc.key} className="absolute pointer-events-none z-40 whitespace-nowrap"
-          style={{ left: fc.x, top: fc.y, opacity: fc.opacity, transform: 'translateX(-50%)' }}>
+          style={{
+            left: 0,
+            top: 0,
+            opacity: fc.opacity,
+            transform: `translate3d(${fc.x}px, ${fc.y}px, 0) translateX(-50%)`,
+            willChange: 'transform, opacity',
+          }}>
           <span
             className="inline-block px-2 py-0.5 rounded-md text-sm font-mono font-semibold"
             style={{ backgroundColor: 'rgba(0,0,0,0.72)', color: '#4ade80' }}
