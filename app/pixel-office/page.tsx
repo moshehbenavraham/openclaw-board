@@ -19,7 +19,14 @@ import { TileType, EditTool } from '@/lib/pixel-office/types'
 import type { TileType as TileTypeVal, FloorColor, OfficeLayout } from '@/lib/pixel-office/types'
 import { getCatalogEntry, isRotatable } from '@/lib/pixel-office/layout/furnitureCatalog'
 import { createDefaultLayout, migrateLayoutColors, serializeLayout } from '@/lib/pixel-office/layout/layoutSerializer'
-import { playDoneSound, unlockAudio, setSoundEnabled, isSoundEnabled } from '@/lib/pixel-office/notificationSound'
+import {
+  playDoneSound,
+  playBackgroundMusic,
+  stopBackgroundMusic,
+  unlockAudio,
+  setSoundEnabled,
+  isSoundEnabled,
+} from '@/lib/pixel-office/notificationSound'
 import { loadCharacterPNGs, loadWallPNG } from '@/lib/pixel-office/sprites/pngLoader'
 import { useI18n } from '@/lib/i18n'
 import { EditorToolbar } from './components/EditorToolbar'
@@ -424,6 +431,7 @@ export default function PixelOfficePage() {
     }
 
     return () => {
+      stopBackgroundMusic()
       cachedOfficeState = officeRef.current
       cachedEditorState = editorRef.current
       cachedSavedLayout = savedLayoutRef.current
@@ -434,6 +442,14 @@ export default function PixelOfficePage() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (soundOn) {
+      void playBackgroundMusic()
+    } else {
+      stopBackgroundMusic()
+    }
+  }, [soundOn])
 
   useEffect(() => {
     cachedAgents = agents
@@ -1090,6 +1106,7 @@ export default function PixelOfficePage() {
   const PHOTO_COUNT = 13
   const handleMouseDown = (e: React.MouseEvent) => {
     unlockAudio()
+    if (soundOn) void playBackgroundMusic()
     if (!canvasRef.current || !officeRef.current) return
     const office = officeRef.current
     const editor = editorRef.current
@@ -1531,6 +1548,11 @@ export default function PixelOfficePage() {
     setSoundEnabled(newVal)
     setSoundOn(newVal)
     localStorage.setItem('pixel-office-sound', String(newVal))
+    if (newVal) {
+      void playBackgroundMusic()
+    } else {
+      stopBackgroundMusic()
+    }
   }, [])
 
   const resetView = useCallback(() => {

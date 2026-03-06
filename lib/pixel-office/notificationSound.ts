@@ -9,9 +9,15 @@ import {
 
 let soundEnabled = true
 let audioCtx: AudioContext | null = null
+let bgmAudio: HTMLAudioElement | null = null
+let bgmGestureRetryBound = false
+
+const BGM_SRC = '/assets/pixel-office/pixel-adventure.mp3'
+const BGM_VOLUME = 0.28
 
 export function setSoundEnabled(enabled: boolean): void {
   soundEnabled = enabled
+  if (!enabled) stopBackgroundMusic()
 }
 
 export function isSoundEnabled(): boolean {
@@ -34,6 +40,51 @@ function playNote(ctx: AudioContext, freq: number, startOffset: number): void {
 
   osc.start(t)
   osc.stop(t + NOTIFICATION_NOTE_DURATION_SEC)
+}
+
+function getBgmAudio(): HTMLAudioElement | null {
+  if (typeof window === 'undefined') return null
+  if (!bgmAudio) {
+    bgmAudio = new Audio(BGM_SRC)
+    bgmAudio.loop = true
+    bgmAudio.preload = 'auto'
+    bgmAudio.volume = BGM_VOLUME
+  }
+  return bgmAudio
+}
+
+function bindBgmGestureRetry(): void {
+  if (typeof window === 'undefined' || bgmGestureRetryBound) return
+  bgmGestureRetryBound = true
+
+  const cleanup = () => {
+    if (typeof window === 'undefined' || !bgmGestureRetryBound) return
+    bgmGestureRetryBound = false
+    window.removeEventListener('pointerdown', resumeOnGesture)
+    window.removeEventListener('touchstart', resumeOnGesture)
+    window.removeEventListener('keydown', resumeOnGesture)
+  }
+
+  const resumeOnGesture = () => {
+    if (!soundEnabled) {
+      cleanup()
+      return
+    }
+    const audio = getBgmAudio()
+    if (!audio) {
+      cleanup()
+      return
+    }
+    audio.play().then(() => {
+      cleanup()
+    }).catch(() => {
+      // Keep listeners for next user gesture attempt.
+    })
+  }
+
+  window.addEventListener('pointerdown', resumeOnGesture, { passive: true })
+  window.addEventListener('touchstart', resumeOnGesture, { passive: true })
+  window.addEventListener('keydown', resumeOnGesture)
 }
 
 export async function playDoneSound(): Promise<void> {
@@ -63,4 +114,25 @@ export function unlockAudio(): void {
   } catch {
     // ignore
   }
+}
+
+export async function playBackgroundMusic(): Promise<void> {
+  if (!soundEnabled) return
+  try {
+    const audio = getBgmAudio()
+    if (!audio) return
+    audio.muted = false
+    audio.loop = true
+    audio.volume = BGM_VOLUME
+    await audio.play()
+  } catch {
+    // Browser autoplay may block playback until a user gesture.
+    bindBgmGestureRetry()
+  }
+}
+
+export function stopBackgroundMusic(): void {
+  if (!bgmAudio) return
+  bgmAudio.pause()
+  bgmAudio.currentTime = 0
 }
