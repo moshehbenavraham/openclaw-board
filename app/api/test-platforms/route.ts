@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
 import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const QQBOT_TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken";
@@ -14,6 +15,56 @@ interface PlatformTestResult {
   detail?: string;
   error?: string;
   elapsed: number;
+}
+
+function runOpenClawMessageSend(channel: string, target: string, message: string, extraArgs: string[] = []): string {
+  const args = [
+    "message", "send",
+    "--channel", channel,
+    "-t", target,
+    "--message", message,
+    "--json",
+    ...extraArgs,
+  ];
+
+  return execFileSync("openclaw", args, {
+    timeout: 30000,
+    encoding: "utf-8",
+    env: { ...process.env },
+  });
+}
+
+function runCurlJson(url: string, options: { method?: string; headers?: string[]; body?: string; timeoutSec?: number } = {}): { status: number; data: any; raw: string } {
+  const args = [
+    '-sS',
+    '--connect-timeout', String(options.timeoutSec ?? 10),
+    '--max-time', String(options.timeoutSec ?? 20),
+    '-X', options.method || 'GET',
+  ];
+
+  for (const header of options.headers || []) {
+    args.push('-H', header);
+  }
+  if (typeof options.body === 'string') {
+    args.push('--data-raw', options.body);
+  }
+  args.push('-w', '\\n%{http_code}', url);
+
+  const raw = execFileSync('curl', args, {
+    timeout: (options.timeoutSec ?? 20) * 1000 + 1000,
+    encoding: 'utf-8',
+    env: { ...process.env },
+  });
+  const cut = raw.lastIndexOf('\n');
+  const body = cut >= 0 ? raw.slice(0, cut) : raw;
+  const status = Number(cut >= 0 ? raw.slice(cut + 1).trim() : 0);
+  let data: any = null;
+  try {
+    data = body ? JSON.parse(body) : null;
+  } catch {
+    data = null;
+  }
+  return { status, data, raw: body };
 }
 
 // Find the most recent feishu DM user open_id for a given agent
@@ -146,99 +197,126 @@ async function testFeishu(
   }
 }
 
-// Discord: call /users/@me then send a DM to test user
+// Discord: use curl so the host proxy settings are honored consistently
 async function testDiscord(
   agentId: string,
   botToken: string,
-  testUserId: string | null
+  testUserId: string | null,
+  recipientSource: "session" | "allowFrom" | "none"
 ): Promise<PlatformTestResult> {
   const startTime = Date.now();
 
   try {
-    const meResp = await fetch("https://discord.com/api/v10/users/@me", {
-      method: "GET",
-      headers: { Authorization: `Bot ${botToken}` },
-      signal: AbortSignal.timeout(15000),
+    const meResp = runCurlJson('https://discord.com/api/v10/users/@me', {
+      headers: [`Authorization: Bot ${botToken}`],
+      timeoutSec: 15,
     });
-
-    const meData = await meResp.json();
-    if (!meResp.ok || !meData.id) {
+    const meData = meResp.data;
+    if (meResp.status < 200 || meResp.status >= 300 || !meData?.id) {
       return {
-        agentId, platform: "discord", ok: false,
-        error: `Discord API error: ${meData.message || JSON.stringify(meData)}`,
+        agentId, platform: 'discord', ok: false,
+        error: `Discord API error: ${meData?.message || meResp.raw || `HTTP ${meResp.status}`}`,
         elapsed: Date.now() - startTime,
       };
     }
 
-    const botName = `${meData.username}#${meData.discriminator || "0"}`;
+    const botName = `${meData.username}#${meData.discriminator || '0'}`;
 
     if (!testUserId) {
       return {
-        agentId, platform: "discord", ok: true,
+        agentId, platform: 'discord', ok: true,
         detail: `${botName} (bot reachable, no test user for DM)`,
         elapsed: Date.now() - startTime,
       };
     }
 
-    // Create DM channel
-    const dmChanResp = await fetch("https://discord.com/api/v10/users/@me/channels", {
-      method: "POST",
-      headers: {
-        Authorization: `Bot ${botToken}`,
-        "Content-Type": "application/json",
-      },
+    const dmChanResp = runCurlJson('https://discord.com/api/v10/users/@me/channels', {
+      method: 'POST',
+      headers: [
+        `Authorization: Bot ${botToken}`,
+        'Content-Type: application/json',
+      ],
       body: JSON.stringify({ recipient_id: testUserId }),
-      signal: AbortSignal.timeout(15000),
+      timeoutSec: 15,
     });
-
-    const dmChan = await dmChanResp.json();
-    if (!dmChanResp.ok || !dmChan.id) {
+    const dmChan = dmChanResp.data;
+    if (dmChanResp.status < 200 || dmChanResp.status >= 300 || !dmChan?.id) {
       return {
-        agentId, platform: "discord", ok: false,
-        error: `Create DM channel failed: ${dmChan.message || JSON.stringify(dmChan)}`,
+        agentId, platform: 'discord', ok: false,
+        error: `Create DM channel failed: ${dmChan?.message || dmChanResp.raw || `HTTP ${dmChanResp.status}`}`,
         elapsed: Date.now() - startTime,
       };
     }
 
-    const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
-    const msgResp = await fetch(
-      `https://discord.com/api/v10/channels/${dmChan.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bot ${botToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          content: `[Platform Test] ${botName} connectivity test ✅ (${now})`,
-        }),
-        signal: AbortSignal.timeout(15000),
-      }
-    );
-
-    const msgData = await msgResp.json();
+    const now = new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    const msgResp = runCurlJson(`https://discord.com/api/v10/channels/${dmChan.id}/messages`, {
+      method: 'POST',
+      headers: [
+        `Authorization: Bot ${botToken}`,
+        'Content-Type: application/json',
+      ],
+      body: JSON.stringify({
+        content: `[Platform Test] ${botName} connectivity test ✅ (${now})`,
+        flags: 4096,
+      }),
+      timeoutSec: 15,
+    });
+    const msgData = msgResp.data;
     const elapsed = Date.now() - startTime;
-
-    if (msgResp.ok && msgData.id) {
+    if (msgResp.status >= 200 && msgResp.status < 300 && msgData?.id) {
+      const sourceLabel = recipientSource === 'allowFrom' ? 'allowFrom' : 'session';
       return {
-        agentId, platform: "discord", ok: true,
-        detail: `${botName} → DM sent (${elapsed}ms)`,
-        elapsed,
-      };
-    } else {
-      return {
-        agentId, platform: "discord", ok: false,
-        error: `Send DM failed: ${msgData.message || JSON.stringify(msgData)}`,
+        agentId, platform: 'discord', ok: true,
+        detail: `${botName} → DM sent (${elapsed}ms, via ${sourceLabel})`,
         elapsed,
       };
     }
+
+    return {
+      agentId, platform: 'discord', ok: false,
+      error: `Send DM failed: ${msgData?.message || msgResp.raw || `HTTP ${msgResp.status}`}`,
+      elapsed,
+    };
   } catch (err: any) {
     return {
-      agentId, platform: "discord", ok: false,
-      error: err.message,
+      agentId, platform: 'discord', ok: false,
+      error: err.stderr || err.message || 'Unknown error',
       elapsed: Date.now() - startTime,
     };
   }
+}
+
+function getDiscordDmUser(agentId: string): string | null {
+  try {
+    const sessionsPath = path.join(OPENCLAW_HOME, `agents/${agentId}/sessions/sessions.json`);
+    const raw = fs.readFileSync(sessionsPath, "utf-8");
+    const sessions = JSON.parse(raw);
+    let bestId: string | null = null;
+    let bestTime = 0;
+    for (const [key, val] of Object.entries(sessions)) {
+      const m = key.match(/^agent:[^:]+:discord:direct:(.+)$/);
+      if (m) {
+        const updatedAt = (val as any).updatedAt || 0;
+        if (updatedAt > bestTime) {
+          bestTime = updatedAt;
+          bestId = m[1];
+        }
+      }
+    }
+    return bestId;
+  } catch {
+    return null;
+  }
+}
+
+function getDiscordAllowlistUser(discordConfig: any): string | null {
+  const list = Array.isArray(discordConfig?.allowFrom)
+    ? discordConfig.allowFrom
+    : Array.isArray(discordConfig?.dm?.allowFrom)
+      ? discordConfig.dm.allowFrom
+      : [];
+  const first = list.find((v: any) => typeof v === "string" && v.trim().length > 0);
+  return first ? first.trim() : null;
 }
 
 // Find the most recent telegram DM chat_id for a given agent
@@ -265,72 +343,40 @@ function getTelegramDmUser(agentId: string): string | null {
   }
 }
 
-// Telegram: call /getMe to verify bot, then send test DM
+// Telegram: send a real DM through local OpenClaw channel gateway
 async function testTelegram(
   agentId: string,
-  botToken: string,
   testChatId: string | null
 ): Promise<PlatformTestResult> {
   const startTime = Date.now();
 
+  if (!testChatId) {
+    return {
+      agentId, platform: "telegram", ok: false,
+      error: "No Telegram recipient configured. Start one DM session first",
+      elapsed: Date.now() - startTime,
+    };
+  }
+
   try {
-    const meResp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, {
-      method: "GET",
-      signal: AbortSignal.timeout(15000),
-    });
-
-    const meData = await meResp.json();
-
-    if (!meResp.ok || !meData.ok || !meData.result) {
-      return {
-        agentId, platform: "telegram", ok: false,
-        error: `Telegram API error: ${meData.description || JSON.stringify(meData)}`,
-        elapsed: Date.now() - startTime,
-      };
-    }
-
-    const botName = meData.result.username ? `@${meData.result.username}` : meData.result.first_name;
-
-    if (!testChatId) {
-      return {
-        agentId, platform: "telegram", ok: true,
-        detail: `${botName} (bot reachable, no DM session found)`,
-        elapsed: Date.now() - startTime,
-      };
-    }
-
-    // Send test message
     const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
-    const msgResp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: testChatId,
-        text: `[Platform Test] ${botName} 联通测试 ✅ (${now})`,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    const msgData = await msgResp.json();
+    const result = runOpenClawMessageSend(
+      "telegram",
+      testChatId,
+      `[Platform Test] Telegram 联通测试 ✅ (${now})`,
+      ["--silent"]
+    );
     const elapsed = Date.now() - startTime;
-
-    if (msgData.ok) {
-      return {
-        agentId, platform: "telegram", ok: true,
-        detail: `${botName} → DM sent (${elapsed}ms)`,
-        elapsed,
-      };
-    } else {
-      return {
-        agentId, platform: "telegram", ok: false,
-        error: `Send DM failed: ${msgData.description || JSON.stringify(msgData)}`,
-        elapsed,
-      };
-    }
+    const outputSummary = result.trim().slice(0, 120);
+    return {
+      agentId, platform: "telegram", ok: true,
+      detail: `Telegram → DM sent to ${testChatId} (${elapsed}ms)${outputSummary ? ` · ${outputSummary}` : ""}`,
+      elapsed,
+    };
   } catch (err: any) {
     return {
       agentId, platform: "telegram", ok: false,
-      error: err.message,
+      error: (err.stderr || err.message || "Unknown error").slice(0, 300),
       elapsed: Date.now() - startTime,
     };
   }
@@ -513,23 +559,12 @@ async function testWhatsapp(
   }
 
   try {
-    // WhatsApp has no public Bot API. Use `openclaw message send` CLI
-    // to send a real message via the gateway's WhatsApp Web connection.
     const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
-    const { execFileSync } = await import("child_process");
-
-    const args = [
-      "message", "send",
-      "--channel", "whatsapp",
-      "-t", testUserId,
-      "--message", `[Platform Test] WhatsApp 联通测试 ✅ (${now})`,
-    ];
-
-    const result = execFileSync("openclaw", args, {
-      timeout: 30000,
-      encoding: "utf-8",
-      env: { ...process.env },
-    });
+    const result = runOpenClawMessageSend(
+      "whatsapp",
+      testUserId,
+      `[Platform Test] WhatsApp 联通测试 ✅ (${now})`
+    );
 
     const elapsed = Date.now() - startTime;
     const sourceLabel = recipientSource === "allowFrom" ? "allowFrom" : "session";
@@ -651,8 +686,6 @@ export async function POST() {
     const feishuAccounts = feishuConfig.accounts || {};
     const feishuDomain = feishuConfig.domain || "feishu";
     const discordConfig = channels.discord || {};
-    const discordAllowFrom: string[] = discordConfig.dm?.allowFrom || [];
-    const discordTestUser = discordAllowFrom[0] || null;
     const telegramConfig = channels.telegram || {};
     const whatsappConfig = channels.whatsapp || {};
     const qqbotConfig = channels.qqbot;
@@ -675,8 +708,10 @@ export async function POST() {
       }
     }
 
-    // Phase 1: Platform API tests (parallel)
+    // Phase 1: Feishu API tests can run in parallel.
+    // Local gateway / CLI-backed channel tests are run sequentially to avoid send-path contention.
     const platformTests: Promise<PlatformTestResult>[] = [];
+    const sequentialPlatformTests: Array<() => Promise<PlatformTestResult>> = [];
     const testedFeishuAccounts = new Set<string>();
 
     for (const agent of agentList) {
@@ -701,15 +736,20 @@ export async function POST() {
         }
       }
 
-      // Discord: only test once
-      if (id === "main" && discordConfig.enabled && discordConfig.token) {
-        platformTests.push(testDiscord(id, discordConfig.token, discordTestUser));
+      // Discord: only test once, via local OpenClaw channel gateway
+      if (id === "main" && discordConfig.enabled) {
+        const recentDmUser = getDiscordDmUser(id);
+        const allowFromUser = getDiscordAllowlistUser(discordConfig);
+        const discordTestUser = recentDmUser || allowFromUser || null;
+        const source: "session" | "allowFrom" | "none" =
+          recentDmUser ? "session" : (allowFromUser ? "allowFrom" : "none");
+        sequentialPlatformTests.push(() => testDiscord(id, discordConfig.token, discordTestUser, source));
       }
 
-      // Telegram: only test once
-      if (id === "main" && telegramConfig.enabled && telegramConfig.botToken) {
+      // Telegram: only test once, via local OpenClaw channel gateway
+      if (id === "main" && telegramConfig.enabled) {
         const telegramTestUser = getTelegramDmUser(id);
-        platformTests.push(testTelegram(id, telegramConfig.botToken, telegramTestUser));
+        sequentialPlatformTests.push(() => testTelegram(id, telegramTestUser));
       }
 
       // WhatsApp: only test once, via gateway
@@ -719,7 +759,7 @@ export async function POST() {
         const whatsappTestUser = recentDmUser || allowFromUser || null;
         const source: "session" | "allowFrom" | "none" =
           recentDmUser ? "session" : (allowFromUser ? "allowFrom" : "none");
-        platformTests.push(testWhatsapp(id, gatewayPort, gatewayToken, whatsappTestUser, source));
+        sequentialPlatformTests.push(() => testWhatsapp(id, gatewayPort, gatewayToken, whatsappTestUser, source));
       }
 
       // QQBot: only test once, via `openclaw message send`
@@ -729,11 +769,14 @@ export async function POST() {
         const qqbotTestUser = recentDmUser || allowFromUser || null;
         const source: "session" | "allowFrom" | "none" =
           recentDmUser ? "session" : (allowFromUser ? "allowFrom" : "none");
-        platformTests.push(testQqbot(id, qqbotConfig, qqbotTestUser, source));
+        sequentialPlatformTests.push(() => testQqbot(id, qqbotConfig, qqbotTestUser, source));
       }
     }
 
     const platformResults = await Promise.all(platformTests);
+    for (const runTest of sequentialPlatformTests) {
+      platformResults.push(await runTest());
+    }
 
     return NextResponse.json({ results: platformResults });
   } catch (err: any) {

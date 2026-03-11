@@ -1,0 +1,10 @@
+  curl https://gpt.qt.cool/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer sk-qt-cool-rAesCG1982qKfefUDoKa2zREJMkMTDMY" \
+    -d '{
+      "model": "gpt-5.3-codex",
+      "messages": [
+        {"role": "user", "content": "hi"}
+      ],
+      "max_tokens": 16
+    }'
