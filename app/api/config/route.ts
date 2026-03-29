@@ -5,15 +5,13 @@ import { getConfigCache, setConfigCache } from "@/lib/config-cache";
 import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 import { shouldHidePlatformChannel } from "@/lib/platforms";
 
-// 配置文件路径：优先使用 OPENCLAW_HOME 环境变量，否则默认 ~/.openclaw
+// Config path: prefer OPENCLAW_HOME, otherwise default to ~/.openclaw.
 const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const OPENCLAW_DIR = OPENCLAW_HOME;
 
 const CACHE_TTL_MS = 30_000;
 
-// 从配置的 allowFrom 读取用户 id，用于构建 session key
-
-// 读取 agent 的 session 状态（最近活跃时间、token 用量）- 从 jsonl 文件解析
+// Read agent session state from JSONL files, including recent activity and token usage.
 interface SessionStatus {
   lastActive: number | null;
   totalTokens: number;
@@ -21,8 +19,8 @@ interface SessionStatus {
   sessionCount: number;
   todayAvgResponseMs: number;
   messageCount: number;
-  weeklyResponseMs: number[]; // 过去7天每天的平均响应时间
-  weeklyTokens: number[]; // 过去7天每天的token用量
+  weeklyResponseMs: number[]; // Average response time for each of the past 7 days.
+  weeklyTokens: number[]; // Token usage for each of the past 7 days.
 }
 
 function getAgentSessionStatus(agentId: string): SessionStatus {
@@ -31,7 +29,7 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
   
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   
-  // 生成过去7天的日期
+  // Build the date list for the last 7 days.
   const weekDates: string[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(Date.now() - i * 86400000);
@@ -44,14 +42,14 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
   let files: string[];
   try {
     const allFiles = fs.readdirSync(sessionsDir).filter(f => f.endsWith(".jsonl") && !f.includes(".deleted."));
-    // 只读最近7天修改过的文件
+    // Only read files modified in the last 7 days.
     const cutoff = Date.now() - 7 * 86400000;
     files = allFiles.filter(f => {
       try { return fs.statSync(path.join(sessionsDir, f)).mtimeMs >= cutoff; } catch { return false; }
     });
   } catch { return result; }
 
-  // 使用 Set 来统计唯一的 session
+  // Track unique session keys with a Set.
   const sessionKeys = new Set<string>();
 
   for (const file of files) {
@@ -66,19 +64,19 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
       let entry: any;
       try { entry = JSON.parse(line); } catch { continue; }
       
-      // 统计 session 数量（从 session key 或 message 中的 sessionKey）
+      // Count sessions from sessionKey fields.
       if (entry.sessionKey) {
         sessionKeys.add(entry.sessionKey);
       }
       
-      // 解析 token 用量 - 从 assistant 消息的 usage 中获取
+      // Read token usage from assistant message usage blocks.
       if (entry.type === "message" && entry.message) {
         const msg = entry.message;
         if (msg.role === "assistant" && msg.usage) {
           result.totalTokens += msg.usage.input || 0;
           result.totalTokens += msg.usage.output || 0;
           result.messageCount += 1;
-          // 按天统计 token
+          // Aggregate tokens by day.
           if (entry.timestamp) {
             const msgDate = entry.timestamp.slice(0, 10);
             if (dailyTokens[msgDate] !== undefined) {
@@ -86,7 +84,7 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
             }
           }
         }
-        // 更新最近活跃时间
+        // Update last activity.
         if (entry.timestamp) {
           const ts = new Date(entry.timestamp).getTime();
           if (!result.lastActive || ts > result.lastActive) {
@@ -97,7 +95,7 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
       }
     }
     
-    // O(n) 响应时间计算：跟踪最近的 user 消息，匹配下一个 assistant stop
+    // O(n) response-time calculation: pair each user message with the next assistant stop.
     let lastUserTs: string | null = null;
     for (const msg of messages) {
       if (msg.role === "user") {
@@ -115,7 +113,7 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
     }
   }
   
-  result.sessionCount = sessionKeys.size || files.length; // 降级为文件数
+  result.sessionCount = sessionKeys.size || files.length; // Fallback to file count.
   const todayTimes = dailyResponseTimes[today] || [];
   if (todayTimes.length > 0) {
     result.todayAvgResponseMs = Math.round(todayTimes.reduce((a, b) => a + b, 0) / todayTimes.length);
@@ -129,7 +127,7 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
   return result;
 }
 
-// 读取所有 agent 的群聊信息
+// Read all group-chat info for the provided agents.
 interface GroupChat {
   groupId: string;
   agents: { id: string; emoji: string; name: string }[];
@@ -143,7 +141,7 @@ function getGroupChats(agentIds: string[], agentMap: Record<string, { emoji: str
       const sessions = sessionsMap.get(agentId);
       if (!sessions) continue;
       for (const key of Object.keys(sessions)) {
-        // 匹配群聊 session: agent:{id}:feishu:group:{groupId} 或 agent:{id}:discord:channel:{channelId}
+        // Match group-session keys across supported channels.
         const feishuGroup = key.match(/^agent:[^:]+:feishu:group:(.+)$/);
         const discordGroup = key.match(/^agent:[^:]+:discord:channel:(.+)$/);
         const telegramGroup = key.match(/^agent:[^:]+:telegram:group:(.+)$/);
@@ -171,7 +169,7 @@ function getGroupChats(agentIds: string[], agentMap: Record<string, { emoji: str
       }
     } catch {}
   }
-  // 返回每个群聊实际有 session 的 agents
+  // Return the agents that actually have sessions in each group chat.
   return Object.entries(groupAgents)
     .filter(([, v]) => v.agents.size > 0)
     .map(([groupId, v]) => ({
@@ -181,7 +179,7 @@ function getGroupChats(agentIds: string[], agentMap: Record<string, { emoji: str
     }));
 }
 
-// 从 OpenClaw sessions 文件获取每个 agent 最近活跃的飞书 DM session 的用户 open_id
+// Read the most recently active Feishu DM user open_id for each agent.
 function getFeishuUserOpenIds(agentIds: string[], sessionsMap: Map<string, any>): Record<string, string> {
   const map: Record<string, string> = {};
   for (const agentId of agentIds) {
@@ -230,14 +228,14 @@ function getChannelDirectPeerIds(
   }
   return map;
 }
-// 从 IDENTITY.md 读取机器人名字
+// Read the bot name from IDENTITY.md.
 function readIdentityName(agentId: string, agentDir?: string, workspace?: string): string | null {
   const candidates = [
     agentDir ? path.join(agentDir, "IDENTITY.md") : null,
     workspace ? path.join(workspace, "IDENTITY.md") : null,
     path.join(OPENCLAW_DIR, `agents/${agentId}/agent/IDENTITY.md`),
     path.join(OPENCLAW_DIR, `workspace-${agentId}/IDENTITY.md`),
-    // 只有 main agent 才 fallback 到默认 workspace
+    // Only the main agent falls back to the default workspace.
     agentId === "main" ? path.join(OPENCLAW_DIR, `workspace/IDENTITY.md`) : null,
   ].filter(Boolean) as string[];
 
@@ -255,7 +253,7 @@ function readIdentityName(agentId: string, agentDir?: string, workspace?: string
 }
 
 export async function GET() {
-  // 命中缓存直接返回
+  // Return cached data when available.
   const configCache = getConfigCache();
   if (configCache && Date.now() - configCache.ts < CACHE_TTL_MS) {
     return NextResponse.json(configCache.data);
@@ -265,7 +263,7 @@ export async function GET() {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     const config = JSON.parse(raw);
 
-    // 提取 agents 信息
+    // Extract agent information.
     const defaults = config.agents?.defaults || {};
     const defaultModel = typeof defaults.model === "string"
       ? defaults.model
@@ -316,7 +314,7 @@ export async function GET() {
       }
     }
 
-    // 一次性读取所有 agent 的 sessions.json，避免重复读取
+    // Read all sessions.json files once to avoid repeated I/O.
     const agentIds = agentList.map((a: any) => a.id);
     const sessionsMap = new Map<string, any>();
     for (const agentId of agentIds) {
@@ -327,7 +325,7 @@ export async function GET() {
       } catch {}
     }
 
-    // 从预读的 sessions 数据获取飞书用户 open_id
+    // Resolve Feishu open_id values from the preloaded session data.
     const feishuUserOpenIds = getFeishuUserOpenIds(agentIds, sessionsMap);
     const enabledChannelNames: string[] = Object.entries(channels)
       .filter(([channelName, cfg]) => cfg && typeof cfg === "object" && (cfg as any).enabled !== false && !shouldHidePlatformChannel(channelName, channels))
@@ -345,7 +343,7 @@ export async function GET() {
     }
     const discordDmAllowFrom = channels.discord?.dm?.allowFrom || [];
 
-    // 构建 agent 详情
+    // Build agent detail records.
     const agents = await Promise.all(agentList.map(async (agent: any) => {
       const id = agent.id;
       const identityName = readIdentityName(id, agent.agentDir, agent.workspace);
@@ -353,7 +351,7 @@ export async function GET() {
       const emoji = agent.identity?.emoji || "🤖";
       const model = normalizeModelRef(agent.model, defaultModel);
 
-      // 查找绑定的平台
+      // Resolve bound platforms.
       const platforms: { name: string; accountId?: string; appId?: string; botOpenId?: string; botUserId?: string }[] = [];
       const addPlatform = (platform: { name: string; accountId?: string; appId?: string; botOpenId?: string; botUserId?: string }) => {
         if (!platform?.name) return;
@@ -361,7 +359,7 @@ export async function GET() {
         if (!exists) platforms.push(platform);
       };
 
-      // 检查飞书绑定 (explicit binding)
+      // Check explicit Feishu bindings.
       const feishuBinding = bindings.find(
         (b: any) => b.agentId === id && b.match?.channel === "feishu"
       );
@@ -381,7 +379,7 @@ export async function GET() {
         addPlatform({ name: "feishu", accountId: id, appId, ...(userOpenId && { botOpenId: userOpenId }) });
       }
 
-      // main agent 特殊处理：默认绑定所有未显式绑定的 channel
+      // Special-case main: show all enabled channels not explicitly bound elsewhere.
       if (id === "main") {
         const hasFeishu = platforms.some((p) => p.name === "feishu");
         if (!hasFeishu && channels.feishu && channels.feishu.enabled !== false) {
@@ -392,7 +390,7 @@ export async function GET() {
           addPlatform({ name: "feishu", accountId: "main", appId, ...(userOpenId && { botOpenId: userOpenId }) });
         }
 
-        // main agent 默认展示所有已启用 channel（feishu 已单独处理）
+        // The main agent shows all enabled channels by default; Feishu is handled separately.
         for (const channelName of enabledChannelNames) {
           if (channelName === "feishu") continue;
           const botUserId = directPeerIdsByChannel[channelName]?.[id]
@@ -401,7 +399,7 @@ export async function GET() {
         }
       }
 
-      // 非 main agent：按显式 bindings 展示 channel（自动支持新增 channel）
+      // Non-main agents only show channels from explicit bindings.
       if (id !== "main") {
         const seenBindingChannels = new Set<string>();
         for (const binding of bindings) {
@@ -419,17 +417,17 @@ export async function GET() {
       return { id, name, emoji, model, platforms };
     }));
 
-    // 为每个 agent 添加 session 状态
+    // Attach session stats to each agent.
     const agentsWithStatus = agents.map((agent: any) => ({
       ...agent,
       session: getAgentSessionStatus(agent.id),
     }));
 
-    // 构建 agent 映射（用于群聊）
+    // Build a lookup map for group-chat rendering.
     const agentMap: Record<string, { emoji: string; name: string }> = {};
     for (const a of agentsWithStatus) agentMap[a.id] = { emoji: a.emoji, name: a.name };
 
-    // 获取群聊信息（传入所有绑定了飞书的 agent id）
+    // Collect group-chat info for all relevant agents.
     const feishuAgentIds = agentsWithStatus.filter((a: any) => a.platforms.some((p: any) => p.name === "feishu")).map((a: any) => a.id);
     const groupChats = getGroupChats(agentIds, agentMap, feishuAgentIds, sessionsMap);
 
@@ -442,7 +440,7 @@ export async function GET() {
       }
     }
 
-    // 提取模型 providers
+    // Extract model providers.
     let providers = Object.entries(config.models?.providers || {}).map(
       ([providerId, provider]: [string, any]) => {
         const models = (provider.models || []).map((m: any) => ({
@@ -454,7 +452,7 @@ export async function GET() {
           input: m.input,
         }));
 
-        // 找出使用该 provider 的 agents
+        // Find agents using this provider.
         const usedBy = agentsWithStatus
           .filter((a: any) => typeof a.model === "string" && a.model.startsWith(providerId + "/"))
           .map((a: any) => ({ id: a.id, emoji: a.emoji, name: a.name }));
@@ -469,8 +467,8 @@ export async function GET() {
       }
     );
 
-    // 始终合并 auth.profiles + agents/defaults 推断的 provider/model，
-    // 兼容 models.providers 与 auth.profiles 同时存在的配置。
+    // Always merge inferred provider/model refs from auth.profiles and agents/defaults.
+    // This keeps the UI working when models.providers and auth.profiles coexist.
     const providerModels: Record<string, { id: string; name?: string }[]> = {};
 
     const ensureProvider = (providerId: string) => {
@@ -488,21 +486,21 @@ export async function GET() {
       }
     };
 
-    // 从 auth.profiles 提取 provider 名称
+    // Add provider names from auth.profiles.
     for (const providerId of authProviderIds) ensureProvider(providerId);
 
-    // 从 agents.defaults.models 提取模型列表
+    // Add model refs from agents.defaults.models.
     const defaultsModels = config.agents?.defaults?.models || {};
     for (const modelKey of Object.keys(defaultsModels)) {
       const alias = defaultsModels[modelKey]?.alias;
       addModelRef(modelKey, alias);
     }
 
-    // 从主模型和 fallback 模型补充
+    // Add the primary and fallback model refs.
     addModelRef(defaultModel);
     for (const fallback of fallbacks) addModelRef(fallback);
 
-    // 从每个 agent 的当前模型补充
+    // Add each agent's current model ref.
     for (const agent of agentsWithStatus) addModelRef(agent.model);
 
     for (const [providerId, inferredModels] of Object.entries(providerModels)) {

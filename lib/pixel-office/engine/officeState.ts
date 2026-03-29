@@ -41,201 +41,7 @@ const LOBSTER_RAGE_DURATION_SEC = 10
 const LOBSTER_BUBBLE_LIFETIME_SEC = 0.8
 const LOBSTER_BUBBLE_SPAWN_RATE = 12
 const LOBSTER_HIT_RADIUS_PX = 6
-// ── Locale-aware text pools ─────────────────────────────────────────────────
 type OfficeLocale = 'zh-TW' | 'zh' | 'en'
-
-const CODE_SNIPPETS_ZH_TW = [
-  // JS/TS
-  'if (...)', 'else {', 'for (...)', 'return', 'async', 'await', 'try {', 'catch', 'import',
-  'const x =', '=> {', '...args', '() => {}', '[...arr]', '{ ...obj }', '===', '?.', '??',
-  // Python
-  'def fn():', 'self.', 'yield', 'lambda x:', '@decorator', '**kwargs', 'except:', 'raise',
-  // LLM / AI
-  'prompt:', 'tokens++', 'model.chat()', 'agent.run()', 'stream()', 'tool_use', 'thinking...',
-  'chat.completions', 'role: "user"', 'max_tokens=', 'temperature=0.7', 'messages.append()',
-  'stop_reason', 'tool_calls[]', 'system_prompt', 'embedding()', 'rag.search()', 'context[]',
-  // Prompt snippets
-  'You are a...', 'Step by step', 'Let me think', 'In summary:', 'For example:',
-  'Please fix...', 'Refactor this', 'Add tests for', 'Explain why', 'Review this PR',
-  'Write a func', 'Debug this', 'Optimize the', 'How to impl', 'Best practice',
-  'Chain of thought', 'Few-shot:', 'Zero-shot:', 'As an expert', 'Given context:',
-  // Dev slang
-  'LGTM', 'RTFM', 'WIP', 'FIXME:', 'TODO:', 'HACK:', 'nit:', '// why?!',
-  'git push -f', 'npm i npm i', 'works on my💻', 'ship it!',
-  '¯\\_(ツ)_/¯', 'seg fault', 'null ptr', '404', 'stack overflow',
-  'it compiles!', 'no repro', 'wontfix', 'by design', 'tech debt++',
-  'rebase hell', 'merge conflict', '// magic num', 'sudo !!', 'chmod 777',
-  'rm  /tmp/*',
-  // 台灣工程師行話
-  '// 別刪這行', '// 能動就好', '// 不知道為啥能動', '// 下次再說', '// 祖傳程式碼',
-  '在嗎？', '已讀不回', '先這樣吧', '回滾！', '又掛了',
-  '誰動了我的分支', '這不是bug', '需求又改了', '上線吧', '別碰那個檔案',
-  '跑不起來啊', '靠腰，重啟試試', '這是誰寫的垃圾！！！', '誰刪我程式碼了去你的', '又500了', '刪庫跑路再說！！！',
-  '這什麼三小需求', '怎麼又改規格', '去你的，為什麼又改', '靠腰，測試又炸了', '噢不，production掛了',
-  // OpenClaw CLI
-  'openclaw status', 'openclaw gateway start', 'openclaw gateway restart',
-  'openclaw logs', 'openclaw doctor', 'openclaw config get',
-  'openclaw message send', 'openclaw skills', 'openclaw models', 'openclaw update',
-]
-
-const SRE_BLACKWORDS_ZH_TW = [
-  '先調整！',
-  '先看監控',
-  '先看P99',
-  '先查閘道日誌',
-  '先查日誌紀錄',
-  '先重現',
-  '限流先開',
-  '還好',
-  '降載執行',
-  '先做降級',
-  '先擴容',
-  '先擴容頂住',
-  '找找文提',
-  '先重啟試試',
-  '先重啟閘道',
-  '先保SLA',
-  '先止血',
-  '核心鏈路優先',
-  '非核心先降級',
-  '觀察流量',
-  '開灰度觀察',
-  '先斷開故障節點',
-  '先摘流壞實例',
-  '熔斷值再收緊',
-  '重試風暴了',
-  '依賴超時傳染了',
-  '執行緒池爆了',
-  '連線池見底了',
-  '快取擊穿了',
-  '快取雪崩了',
-  'DB抖了',
-  'MQ堆積了',
-  '閘道扛不住了',
-  '上游在抖',
-  '下游撐不住了',
-  '觀察錯誤率',
-  '觀察超時率',
-  '抓出回應慢的',
-  'RT飆了',
-  'error budget快打穿了',
-  '先叫值班同學',
-  '先通知業務端',
-  '先發故障通告',
-  '記錄時間線，後面盤點',
-  '警報風暴來了',
-  '開戰情室',
-  '恢復中...',
-  'SLA 要頂住',
-  'MTTR 壓下來',
-  '這波別炸',
-]
-
-const PHOTO_COMMENTS_ZH_TW = [
-  '這張讚！', '構圖超棒', '光線好美', '色調很舒服', '學習了',
-  '出片了！', '桌布等級', '大片既視感', '這質感絕了', '散景好美',
-  '焦段選得好', '拍出了情緒', '太有電影感了', '超有氛圍',
-  '這光太絕了！！！', '這光太絕了！！！', '這光太絕了！！！',
-  '這光太絕了！！！', '這光太絕了！！！',
-  '不愧是台灣之光', '這是決定性瞬間！！！', '這個構圖絕了！',
-]
-
-const CODE_SNIPPETS_ZH = [
-  // JS/TS
-  'if (...)', 'else {', 'for (...)', 'return', 'async', 'await', 'try {', 'catch', 'import',
-  'const x =', '=> {', '...args', '() => {}', '[...arr]', '{ ...obj }', '===', '?.', '??',
-  // Python
-  'def fn():', 'self.', 'yield', 'lambda x:', '@decorator', '**kwargs', 'except:', 'raise',
-  // LLM / AI
-  'prompt:', 'tokens++', 'model.chat()', 'agent.run()', 'stream()', 'tool_use', 'thinking...',
-  'chat.completions', 'role: "user"', 'max_tokens=', 'temperature=0.7', 'messages.append()',
-  'stop_reason', 'tool_calls[]', 'system_prompt', 'embedding()', 'rag.search()', 'context[]',
-  // Prompt snippets
-  'You are a...', 'Step by step', 'Let me think', 'In summary:', 'For example:',
-  'Please fix...', 'Refactor this', 'Add tests for', 'Explain why', 'Review this PR',
-  'Write a func', 'Debug this', 'Optimize the', 'How to impl', 'Best practice',
-  'Chain of thought', 'Few-shot:', 'Zero-shot:', 'As an expert', 'Given context:',
-  // Dev slang
-  'LGTM', 'RTFM', 'WIP', 'FIXME:', 'TODO:', 'HACK:', 'nit:', '// why?!',
-  'git push -f', 'rm -rf node_', 'npm i npm i', 'works on my💻', 'ship it!',
-  '¯\\_(ツ)_/¯', 'seg fault', 'null ptr', '404', 'stack overflow',
-  'it compiles!', 'no repro', 'wontfix', 'by design', 'tech debt++',
-  'rebase hell', 'merge conflict', '// magic num', 'sudo !!', 'chmod 777',
-    'rm  /tmp/*', 
-  // 中文程序员黑话
-  '// 别删这行', '// 能跑就行', '// 不知道为啥能跑', '// 下次再改', '// 祖传代码',
-  '在吗？', '已读不回', '先这样吧', '回滚！', '又挂了',
-  '谁动了我的分支', '这不是bug', '需求又变了', '上线吧', '别碰那个文件',
-  '跑不起来啊', '重启试试', '这是谁写的屎山！！！', '谁删我代码了？？？tmd', '又500了', '删库跑路再说！！！',
-  // OpenClaw CLI
-  'openclaw status', 'openclaw gateway start', 'openclaw gateway restart',
-  'openclaw logs', 'openclaw doctor', 'openclaw config get',
-  'openclaw message send', 'openclaw skills', 'openclaw models', 'openclaw update',
-]
-
-const SRE_BLACKWORDS_ZH = [
-  '先止血！',
-  '先看监控',
-  '先看P99',
-  '先查网关日志',
-  '先查日志',
-  '先复现',
-  '限流先开',
-  '熔断先上',
-  '先熔断',
-  '降级保命',
-  '做降级保核心链路',
-  '先扩容',
-  '先扩容顶住',
-  '先回滚',
-  '先重启试试',
-  '先重启网关',
-  '先保SLA',
-  '先兜底',
-  '核心链路优先',
-  '非核心先降级',
-  '流量削峰',
-  '开灰度观察',
-  '先旁路故障节点',
-  '先摘流坏实例',
-  '熔断阈值再收紧',
-  '重试风暴了',
-  '依赖超时传染了',
-  '线程池爆了',
-  '连接池见底了',
-  '缓存击穿了',
-  '缓存雪崩了',
-  'DB抖了',
-  'MQ堆积了',
-  '网关扛不住了',
-  '上游在抖',
-  '下游背压了',
-  '观察错误率',
-  '观察超时率',
-  '抓慢请求',
-  'RT飙了',
-  'error budget快打穿了',
-  '先拉值班同学',
-  '先同步业务方预期',
-  '先发故障通告',
-  '记录时间线，后面复盘',
-  '告警风暴来了',
-  '开战情室',
-  '恢复中...',
-  'SLA 要顶住',
-  'MTTR 压下来',
-  '这波别炸',
-]
-
-const PHOTO_COMMENTS_ZH = [
-  '毒！', '毒德大学', '德味！', '刀锐奶化', '空气切割感',
-  '氛围感拉满', '这光太绝了', '构图教科书', '色彩太舒服了', '学习了',
-  '出片了！', '壁纸级', '大片既视感', '这质感绝了', '奶油焦外',
-  '焦段选得好', '拍出了情绪', '太有电影感了',
-  '德味、毒、大师、学习了！！！', '德味、毒、大师、学习了！！！', '德味、毒、大师、学习了！！！',
-  '德味、毒、大师、学习了！！！', '德味、毒、大师、学习了！！！',
-  '不愧是中国布列松', '这是决定性瞬间！！！', '这个复杂构图绝了！',
-]
 
 const CODE_SNIPPETS_EN = [
   // JS/TS
@@ -332,30 +138,20 @@ const PHOTO_COMMENTS_EN = [
   'Not a photo, a painting!', 'The decisive moment!!!', 'Complex comp, nailed it!',
 ]
 
-function getCodeSnippets(locale: OfficeLocale): string[] {
-  if (locale === 'zh-TW') return CODE_SNIPPETS_ZH_TW
-  if (locale === 'en') return CODE_SNIPPETS_EN
-  return CODE_SNIPPETS_ZH
+function getCodeSnippets(_locale: OfficeLocale): string[] {
+  return CODE_SNIPPETS_EN
 }
-function getSreBlackwords(locale: OfficeLocale): string[] {
-  if (locale === 'zh-TW') return SRE_BLACKWORDS_ZH_TW
-  if (locale === 'en') return SRE_BLACKWORDS_EN
-  return SRE_BLACKWORDS_ZH
+function getSreBlackwords(_locale: OfficeLocale): string[] {
+  return SRE_BLACKWORDS_EN
 }
-function getPhotoComments(locale: OfficeLocale): string[] {
-  if (locale === 'zh-TW') return PHOTO_COMMENTS_ZH_TW
-  if (locale === 'en') return PHOTO_COMMENTS_EN
-  return PHOTO_COMMENTS_ZH
+function getPhotoComments(_locale: OfficeLocale): string[] {
+  return PHOTO_COMMENTS_EN
 }
-function getTempWorkerLabel(locale: OfficeLocale): string {
-  if (locale === 'zh-TW') return '臨時工'
-  if (locale === 'en') return 'Temp'
-  return '临时工'
+function getTempWorkerLabel(_locale: OfficeLocale): string {
+  return 'Temp'
 }
-function getGatewaySreLabel(locale: OfficeLocale): string {
-  if (locale === 'zh-TW') return '值班工程師'
-  if (locale === 'en') return 'On-Call SRE'
-  return '值班SRE'
+function getGatewaySreLabel(_locale: OfficeLocale): string {
+  return 'On-Call SRE'
 }
 const SUBAGENT_PRIORITY_SEAT_IDS = [
   'stool-r1', 'stool-r2', 'stool-r3', 'stool-r4',
@@ -364,7 +160,7 @@ const SUBAGENT_PRIORITY_SEAT_IDS = [
 const SUBAGENT_SPAWN_CENTER_COL = 10
 const SUBAGENT_SPAWN_CENTER_ROW = 14
 const SUBAGENT_RUN_SPEED_MULTIPLIER = 2.8
-const GATEWAY_SRE_LABEL = '值班SRE'
+const GATEWAY_SRE_LABEL = 'On-Call SRE'
 const GATEWAY_SRE_STANDBY_COL = 2
 const GATEWAY_SRE_STANDBY_ROW = 14
 const GATEWAY_SRE_RESCUE_CANDIDATES = [
@@ -429,7 +225,7 @@ export class OfficeState {
     if (sre) sre.label = getGatewaySreLabel(locale)
     // Re-label any temp workers
     for (const [, ch] of this.characters) {
-      if (ch.label === '临时工' || ch.label === '臨時工' || ch.label === 'Temp') {
+      if (ch.label === '\u4e34\u65f6\u5de5' || ch.label === '\u81e8\u6642\u5de5' || ch.label === 'Temp') {
         ch.label = getTempWorkerLabel(locale)
       }
     }
@@ -1613,7 +1409,7 @@ export class OfficeState {
 
       // Code snippet particles:
       // - Working agents: regular coding snippets
-      // - Gateway SRE in down state: ops slang ("运维黑话")
+      // - Gateway SRE in down state: ops slang
       // - Subagent/session-driven snippets can be injected externally via pushCodeSnippet().
       if (!ch.isCat && !ch.isLobster) {
         for (const s of ch.codeSnippets) s.age += dt

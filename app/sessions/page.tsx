@@ -199,7 +199,7 @@ function SessionList({ agentId }: { agentId: string }) {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
 
-    // 从 localStorage 恢复测试结果
+    // Restore saved test results from localStorage.
     const savedTestResults = localStorage.getItem('sessionTestResults');
     if (savedTestResults) {
       try {
@@ -210,7 +210,7 @@ function SessionList({ agentId }: { agentId: string }) {
     }
   }, [agentId]);
 
-  // 保存测试结果到 localStorage
+  // Persist test results to localStorage.
   useEffect(() => {
     if (Object.keys(testResults).length > 0) {
       localStorage.setItem('sessionTestResults', JSON.stringify(testResults));

@@ -44,7 +44,7 @@ interface TestResult {
   model?: string;
 }
 
-// 格式化数字
+// Format compact numbers.
 function formatNum(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
   return String(n);
@@ -138,7 +138,7 @@ export default function ModelsPage() {
     );
   };
 
-  // 首次加载 - 从 localStorage 恢复测试状态
+  // Initial load: restore saved test state from localStorage.
   useEffect(() => {
     Promise.all([
       fetch("/api/config").then((r) => r.json()),
@@ -157,7 +157,7 @@ export default function ModelsPage() {
       })
       .catch((e) => setError(e.message));
 
-    // 从 localStorage 恢复测试结果
+    // Restore saved test results from localStorage.
     const savedTestResults = localStorage.getItem('modelTestResults');
     if (savedTestResults) {
       try {
@@ -168,7 +168,7 @@ export default function ModelsPage() {
     }
   }, []);
 
-  // 保存测试结果到 localStorage
+  // Persist test results to localStorage.
   useEffect(() => {
     if (Object.keys(testResults).length > 0) {
       localStorage.setItem('modelTestResults', JSON.stringify(testResults));
@@ -223,7 +223,7 @@ export default function ModelsPage() {
         </div>
       </div>
 
-      {/* 主模型和 Fallback 模型 */}
+      {/* Primary and fallback models */}
       <div className="mb-6 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)] flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-muted)]">{t("models.defaultModel")}:</span>

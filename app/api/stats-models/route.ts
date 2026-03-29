@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
-// 30秒内存缓存
+// 30-second in-memory cache.
 let statsCache: { data: any; ts: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
@@ -22,7 +22,7 @@ interface InternalModelStat extends ModelStat {
 }
 
 export async function GET() {
-  // 命中缓存直接返回
+  // Return cached data when available.
   if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
     return NextResponse.json(statsCache.data);
   }
@@ -36,7 +36,7 @@ export async function GET() {
 
     const modelMap: Record<string, InternalModelStat> = {};
 
-    // 并行处理所有 agent
+    // Process all agents in parallel.
     await Promise.all(agentIds.map(async (agentId) => {
       const sessionsDir = path.join(agentsDir, agentId, "sessions");
       let fileNames: string[];
@@ -44,7 +44,7 @@ export async function GET() {
         fileNames = (await fs.promises.readdir(sessionsDir)).filter(f => f.endsWith(".jsonl") && !f.includes(".deleted."));
       } catch { return; }
 
-      // 并行读取所有 JSONL 文件
+      // Read all JSONL files in parallel.
       const fileContents = await Promise.all(fileNames.map(async (file) => {
         try { return await fs.promises.readFile(path.join(sessionsDir, file), "utf-8"); } catch { return null; }
       }));
@@ -79,7 +79,7 @@ export async function GET() {
           }
         }
 
-        // O(n) 响应时间计算
+        // O(n) response-time calculation.
         let lastUserTs: string | null = null;
         for (const line of lines) {
           let entry: any;

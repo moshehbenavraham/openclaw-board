@@ -2,20 +2,20 @@
 
 import { useEffect, useState } from "react";
 
-// 后台告警检查组件 - 服务启动时自动开始
+// Background alert checker that starts automatically with the app.
 export function AlertMonitor() {
   const [enabled, setEnabled] = useState(false);
   const [checkInterval, setCheckInterval] = useState(10);
   const [lastResults, setLastResults] = useState<string[]>([]);
 
   useEffect(() => {
-    // 加载配置并启动检查
+    // Load config and start checking.
     fetch("/api/alerts")
       .then(r => r.json())
       .then(config => {
         if (config.enabled) {
           setEnabled(true);
-          // 检查函数
+          // Alert check function.
           const checkAlerts = () => {
             fetch("/api/alerts/check", { method: "POST" })
               .then(r => r.json())
@@ -28,10 +28,10 @@ export function AlertMonitor() {
               .catch(console.error);
           };
           
-          // 立即检查一次
+          // Run one immediate check.
           checkAlerts();
           
-          // 设置定时器
+          // Start the interval timer.
           const timer = setInterval(checkAlerts, (config.checkInterval || 10) * 60 * 1000);
           return () => clearInterval(timer);
         }
@@ -39,6 +39,6 @@ export function AlertMonitor() {
       .catch(console.error);
   }, []);
 
-  // 不渲染任何内容，只在后台运行
+  // Render nothing; this runs only in the background.
   return null;
 }

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { execSync } from "child_process";
 
-// 24 小时内存缓存
+// 24-hour in-memory cache.
 let cache: { data: any; ts: number } | null = null;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** 从 git remote URL 提取 GitHub 用户名 */
+/** Extract the GitHub username from a git remote URL. */
 function getGitHubUsername(): string | null {
   try {
     const url = execSync("git remote get-url origin", { encoding: "utf-8" }).trim();
@@ -17,7 +17,7 @@ function getGitHubUsername(): string | null {
   return null;
 }
 
-// data-level 转近似 count
+// Convert data-level to an approximate contribution count.
 const LEVEL_TO_COUNT = [0, 2, 5, 8, 12];
 
 async function fetchContributions(username: string) {
@@ -33,7 +33,7 @@ async function fetchContributions(username: string) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    // 用正则提取所有 data-date + data-level
+    // Extract all data-date and data-level pairs with regex.
     const cellRe = /data-date="(\d{4}-\d{2}-\d{2})"[^>]*data-level="(\d)"/g;
     const days: { date: string; count: number }[] = [];
     let m: RegExpExecArray | null;
@@ -43,7 +43,7 @@ async function fetchContributions(username: string) {
     }
     if (days.length === 0) return null;
 
-    // 按日期排序后分组为 52 周
+    // Sort by date, then group into 52 weeks.
     days.sort((a, b) => a.date.localeCompare(b.date));
     const weeks: { days: { count: number; date: string }[] }[] = [];
     for (let i = 0; i < days.length; i += 7) {
@@ -51,7 +51,7 @@ async function fetchContributions(username: string) {
       while (chunk.length < 7) chunk.push({ count: 0, date: "" });
       weeks.push({ days: chunk });
     }
-    // 保留最近 52 周
+    // Keep the most recent 52 weeks.
     const trimmed = weeks.slice(-52);
     while (trimmed.length < 52) {
       trimmed.unshift({ days: Array.from({ length: 7 }, () => ({ count: 0, date: "" })) });

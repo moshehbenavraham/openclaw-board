@@ -697,7 +697,7 @@ export default function PixelOfficePage() {
 
   // Load GitHub contribution heatmap data (real → fallback mock)
   useEffect(() => {
-    // 先设置 mock 保证立即有内容
+    // Seed mock data first so the panel is never empty.
     const mockWeeks = Array.from({ length: 52 }, () => ({
       days: Array.from({ length: 7 }, () => ({
         count: Math.random() < 0.25 ? 0 : Math.floor(Math.random() * 12),
@@ -706,7 +706,7 @@ export default function PixelOfficePage() {
     }))
     contributionsRef.current = { weeks: mockWeeks, username: 'mock' }
 
-    // 异步拉取真实数据
+    // Fetch the real data asynchronously.
     fetch('/api/pixel-office/contributions')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -1768,7 +1768,7 @@ export default function PixelOfficePage() {
             {soundOn && (
               <button onClick={skipToNextTrack}
                 className="px-3 py-1.5 text-xs rounded-lg border transition-colors bg-[var(--card)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--accent)]"
-                title="下一首">
+                title="Next track">
                 ⏭
               </button>
             )}

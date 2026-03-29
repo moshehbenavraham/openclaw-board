@@ -54,7 +54,7 @@ export function ThemeSwitcher() {
     <button
       onClick={toggleTheme}
       className="px-2 py-1.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm hover:border-[var(--accent)] transition cursor-pointer"
-      title={theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
     >
       {theme === "dark" ? "☀️" : "🌙"}
     </button>

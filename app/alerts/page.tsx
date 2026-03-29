@@ -25,25 +25,13 @@ interface Agent {
   emoji: string;
 }
 
-const RULE_DESCRIPTIONS: Record<string, Record<string, string>> = {
-  "zh-TW": {
-    model_unavailable: "模型不可用 - 當測試模型失敗時觸發",
-    bot_no_response: "Bot 長時間無回應 - 當機器人超過設定時間未回應時觸發",
-    message_failure_rate: "訊息失敗率升高 - 當訊息失敗率超過閾值時觸發",
-    cron连续_failure: "Cron 連續失敗 - 當定時任務連續失敗超過設定次數時觸發",
-  },
-  zh: {
-    model_unavailable: "模型不可用 - 当测试模型失败时触发",
-    bot_no_response: "Bot 长时间无响应 - 当机器人超过设定时间未响应时触发",
-    message_failure_rate: "消息失败率升高 - 当消息失败率超过阈值时触发",
-    cron连续_failure: "Cron 连续失败 - 当定时任务连续失败超过设定次数时触发",
-  },
-  en: {
-    model_unavailable: "Model Unavailable - Triggered when model test fails",
-    bot_no_response: "Bot Long Time No Response - Triggered when bot is inactive for set period",
-    message_failure_rate: "Message Failure Rate High - Triggered when failure rate exceeds threshold",
-    cron连续_failure: "Cron Continuous Failure - Triggered when cron jobs fail multiple times in a row",
-  },
+const CRON_RULE_ID = "cron_continuous_failure";
+
+const RULE_DESCRIPTIONS: Record<string, string> = {
+  model_unavailable: "Model Unavailable - Triggered when model testing fails",
+  bot_no_response: "Bot Long Time No Response - Triggered when a bot stays inactive past the threshold",
+  message_failure_rate: "Message Failure Rate High - Triggered when the failure rate exceeds the threshold",
+  [CRON_RULE_ID]: "Cron Continuous Failure - Triggered when cron jobs fail multiple times in a row",
 };
 
 export default function AlertsPage() {
@@ -58,38 +46,36 @@ export default function AlertsPage() {
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const [checkInterval, setCheckInterval] = useState(10);
 
-  // 从配置加载 checkInterval
+  // Load the configured alert interval.
   useEffect(() => {
     if (config?.checkInterval) {
       setCheckInterval(config.checkInterval);
     }
   }, [config?.checkInterval]);
 
-  const ruleDescriptions = RULE_DESCRIPTIONS[locale as keyof typeof RULE_DESCRIPTIONS] || RULE_DESCRIPTIONS.zh;
-  const isEnglish = locale === "en";
-  const isTraditionalChinese = locale === "zh-TW";
-  const timeLocale = isEnglish ? "en-US" : isTraditionalChinese ? "zh-TW" : "zh-CN";
+  const ruleDescriptions = RULE_DESCRIPTIONS;
+  const timeLocale = locale === "en" ? "en-US" : "en-US";
   const ui = {
-    minutes5: isEnglish ? "5 minutes" : isTraditionalChinese ? "5 分鐘" : "5 分钟",
-    minutes10: isEnglish ? "10 minutes" : isTraditionalChinese ? "10 分鐘" : "10 分钟",
-    minutes30: isEnglish ? "30 minutes" : isTraditionalChinese ? "30 分鐘" : "30 分钟",
-    hour1: isEnglish ? "1 hour" : isTraditionalChinese ? "1 小時" : "1 小时",
-    hours2: isEnglish ? "2 hours" : isTraditionalChinese ? "2 小時" : "2 小时",
-    hours5: isEnglish ? "5 hours" : isTraditionalChinese ? "5 小時" : "5 小时",
-    checking: isEnglish ? "⏳ Checking..." : isTraditionalChinese ? "⏳ 檢查中..." : "⏳ 检查中...",
-    checkNow: isEnglish ? "🔄 Check Now" : isTraditionalChinese ? "🔄 立即檢查" : "🔄 立即检查",
-    alertsTriggered: isEnglish ? "⚠️ Alerts Triggered" : isTraditionalChinese ? "⚠️ 警報觸發" : "⚠️ 告警触发",
-    checkingAlerts: isEnglish ? "⏳ Checking alerts..." : isTraditionalChinese ? "⏳ 正在檢查警報..." : "⏳ 正在检查告警...",
-    timeout: isEnglish ? "Timeout (s):" : isTraditionalChinese ? "超時 (秒):" : "超时 (秒):",
-    failureRate: isEnglish ? "Failure rate (%):" : isTraditionalChinese ? "失敗率 (%):" : "失败率 (%):",
-    maxFailures: isEnglish ? "Max failures:" : isTraditionalChinese ? "最大失敗數:" : "最大失败数:",
-    threshold: isEnglish ? "Threshold:" : isTraditionalChinese ? "閾值:" : "阈值:",
-    monitor: isEnglish ? "Monitor:" : isTraditionalChinese ? "檢測機器人:" : "检测机器人:",
-    emptyMeansAll: isEnglish ? "(empty = all)" : isTraditionalChinese ? "(不選則檢測所有)" : "(不选则检测所有)",
-    saved: isEnglish ? "Saved" : isTraditionalChinese ? "已保存" : "已保存",
+    minutes5: "5 minutes",
+    minutes10: "10 minutes",
+    minutes30: "30 minutes",
+    hour1: "1 hour",
+    hours2: "2 hours",
+    hours5: "5 hours",
+    checking: "⏳ Checking...",
+    checkNow: "🔄 Check Now",
+    alertsTriggered: "⚠️ Alerts Triggered",
+    checkingAlerts: "⏳ Checking alerts...",
+    timeout: "Timeout (s):",
+    failureRate: "Failure rate (%):",
+    maxFailures: "Max failures:",
+    threshold: "Threshold:",
+    monitor: "Monitor bots:",
+    emptyMeansAll: "(empty = all)",
+    saved: "Saved",
   };
 
-  // 加载配置
+  // Load config and agent data.
   useEffect(() => {
     Promise.all([
       fetch("/api/alerts").then((r) => r.json()),
@@ -103,7 +89,7 @@ export default function AlertsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // 定时检查告警（不自动触发，由用户点击按钮触发）
+  // Schedule alert checks without auto-running one on mount.
   useEffect(() => {
     if (!config?.enabled) return;
     
@@ -121,7 +107,7 @@ export default function AlertsPage() {
         .finally(() => setChecking(false));
     };
 
-    // 只设置定时器，不立即检查
+    // Only set the timer here; do not run an immediate check.
     const timer = setInterval(checkAlerts, checkInterval * 60 * 1000);
     return () => clearInterval(timer);
   }, [config?.enabled, checkInterval, locale]);
@@ -260,7 +246,7 @@ export default function AlertsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* 检查间隔设置 */}
+          {/* Check interval */}
           {config.enabled && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-[var(--text-muted)]">{t("alerts.checkInterval") || "Check Interval"}:</span>
@@ -278,7 +264,7 @@ export default function AlertsPage() {
               </select>
             </div>
           )}
-          {/* 手动检查按钮 */}
+          {/* Manual check button */}
           {config.enabled && (
             <button
               onClick={handleManualCheck}
@@ -297,7 +283,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* 检查结果展示 */}
+      {/* Check results */}
       {config.enabled && checkResults.length > 0 && (
         <div className="p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 mb-6">
           <div className="flex items-center justify-between mb-2">
@@ -320,7 +306,7 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* 告警总开关 */}
+      {/* Global alert toggle */}
       <div className="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)] mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -345,7 +331,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* 接收告警的机器人 */}
+      {/* Alert recipient agent */}
       <div className="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)] mb-6">
         <h2 className="text-lg font-semibold mb-3">{t("alerts.receiveAgent") || "Receive Alert Agent"}</h2>
         <div className="flex flex-wrap gap-2">
@@ -366,7 +352,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* 告警规则列表 */}
+      {/* Alert rule list */}
       <div className="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <h2 className="text-lg font-semibold mb-3">{t("alerts.rules") || "Alert Rules"}</h2>
         <p className="text-[var(--text-muted)] text-sm mb-4">
@@ -405,7 +391,7 @@ export default function AlertsPage() {
                     <span className="text-xs text-[var(--text-muted)]">
                       {rule.id === "bot_no_response" ? ui.timeout :
                        rule.id === "message_failure_rate" ? ui.failureRate :
-                       rule.id === "cron连续_failure" ? ui.maxFailures :
+                       rule.id === CRON_RULE_ID ? ui.maxFailures :
                        ui.threshold}
                     </span>
                     <input
@@ -432,7 +418,7 @@ export default function AlertsPage() {
                   </div>
                 )}
               </div>
-              {/* bot_no_response 规则：选择要检测的机器人 */}
+              {/* bot_no_response rule: choose which agents to monitor */}
               {rule.id === "bot_no_response" && rule.enabled && (
                 <div className="mt-3 pt-3 border-t border-[var(--border)]">
                   <div className="flex flex-wrap gap-2 items-center">
@@ -492,7 +478,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* 保存提示 */}
+      {/* Saved notice */}
       {saved && (
         <div className="fixed bottom-8 right-8 px-4 py-2 rounded-lg bg-green-500 text-white text-sm animate-fade-in">
           ✓ {ui.saved}

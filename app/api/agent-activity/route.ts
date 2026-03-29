@@ -96,7 +96,7 @@ async function loadAgentList(config: any, agentsDir: string): Promise<AgentConfi
 
 function isSubtaskDescription(desc: string): boolean {
   const d = desc.toLowerCase()
-  return desc.startsWith('Subtask:') || desc.startsWith('子任务') || d.includes('subtask')
+  return desc.startsWith('Subtask:') || desc.startsWith('\u5b50\u4efb\u52a1') || d.includes('subtask')
 }
 
 function isSpawnTool(name: string): boolean {
@@ -119,7 +119,7 @@ function extractCompletedSubagentLabel(text: string): string | null {
     /A subagent task\s+'([^']+)'\s+just completed/i,
     /subagent task\s+"([^"]+)"\s+.*completed/i,
     /subagent task\s+'([^']+)'\s+.*completed/i,
-    /子任务[“"]([^”"]+)[”"].{0,12}完成/,
+    /\u5b50\u4efb\u52a1[“"]([^”"]+)[”"].{0,12}\u5b8c\u6210/,
   ]
   for (const p of patterns) {
     const m = text.match(p)

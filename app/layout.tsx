@@ -7,7 +7,7 @@ import { GlobalBugsOverlay } from "./global-bugs-overlay";
 
 export const metadata: Metadata = {
   title: "OpenClaw Bot Dashboard",
-  description: "查看所有 OpenClaw 机器人配置",
+  description: "View all OpenClaw bot configurations",
 };
 
 export const viewport: Viewport = {

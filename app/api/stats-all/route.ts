@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
-// 30秒内存缓存
+// 30-second in-memory cache.
 let statsCache: { data: any; ts: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
@@ -29,7 +29,7 @@ async function parseAgentSessions(agentId: string): Promise<InternalDayStat[]> {
     fileNames = (await fs.promises.readdir(sessionsDir)).filter(f => f.endsWith(".jsonl") && !f.includes(".deleted."));
   } catch { return []; }
 
-  // 并行读取所有 JSONL 文件
+  // Read all JSONL files in parallel.
   const fileContents = await Promise.all(fileNames.map(async (file) => {
     try { return await fs.promises.readFile(path.join(sessionsDir, file), "utf-8"); } catch { return null; }
   }));
@@ -62,7 +62,7 @@ async function parseAgentSessions(agentId: string): Promise<InternalDayStat[]> {
       }
     }
 
-    // O(n) 响应时间计算：跟踪最近的 user 消息，匹配下一个 assistant stop
+    // O(n) response-time calculation: pair each user message with the next assistant stop.
     let lastUserTs: string | null = null;
     for (const msg of messages) {
       if (msg.role === "user") {
@@ -115,7 +115,7 @@ function aggregateToWeeklyMonthly(daily: DayStat[]) {
 }
 
 export async function GET() {
-  // 命中缓存直接返回
+  // Return cached data when available.
   if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
     return NextResponse.json(statsCache.data);
   }
@@ -125,7 +125,7 @@ export async function GET() {
     let agentIds: string[];
     try { agentIds = fs.readdirSync(agentsDir).filter(f => fs.statSync(path.join(agentsDir, f)).isDirectory()); } catch { agentIds = []; }
 
-    // 并行处理所有 agent
+    // Process all agents in parallel.
     const allAgentDays = await Promise.all(agentIds.map(id => parseAgentSessions(id)));
 
     const dayMap: Record<string, InternalDayStat> = {};

@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 const ALERTS_CONFIG_PATH = path.join(OPENCLAW_HOME, "alerts.json");
+const CRON_RULE_ID = "cron_continuous_failure";
+const LEGACY_CRON_RULE_ID = "cron\u8fde\u7eed_failure";
 
 interface AlertRule {
   id: string;
@@ -31,7 +33,7 @@ function getAlertConfig(): AlertConfig {
     { id: "model_unavailable", name: "Model Unavailable", enabled: false },
     { id: "bot_no_response", name: "Bot Long Time No Response", enabled: false, threshold: 300 },
     { id: "message_failure_rate", name: "Message Failure Rate High", enabled: false, threshold: 50 },
-    { id: "cron连续_failure", name: "Cron Continuous Failure", enabled: false, threshold: 3 },
+    { id: CRON_RULE_ID, name: "Cron Continuous Failure", enabled: false, threshold: 3 },
   ], lastAlerts: {} };
 }
 
@@ -68,11 +70,11 @@ function getGatewayConfig() {
   }
 }
 
-// 获取 agent 对应的飞书账号配置
+// Resolve the Feishu account config for the target agent.
 function getFeishuAccountForAgent(agentId: string, feishuConfig: any, bindings: any[]): { appId: string; appSecret: string; accountId: string } | null {
   const feishuAccounts = feishuConfig.accounts || {};
   
-  // 查找显式绑定
+  // Check explicit bindings first.
   const feishuBinding = bindings.find((b: any) => b.agentId === agentId && b.match?.channel === "feishu");
   if (feishuBinding) {
     const accountId = feishuBinding.match?.accountId || agentId;
@@ -82,7 +84,7 @@ function getFeishuAccountForAgent(agentId: string, feishuConfig: any, bindings: 
     }
   }
   
-  // 检查是否有同名账号
+  // Fall back to an account with the same name.
   if (feishuAccounts[agentId]) {
     const account = feishuAccounts[agentId];
     if (account?.appId && account?.appSecret) {
@@ -98,7 +100,7 @@ function getFeishuAccountForAgent(agentId: string, feishuConfig: any, bindings: 
   return null;
 }
 
-// 获取 agent 最近的发过消息的飞书用户
+// Find the most recent Feishu DM user for the agent.
 function getFeishuDmUser(agentId: string): string | null {
   try {
     const sessionsPath = path.join(OPENCLAW_HOME, `agents/${agentId}/sessions/sessions.json`);
@@ -122,7 +124,7 @@ function getFeishuDmUser(agentId: string): string | null {
   }
 }
 
-// 通过飞书 API 发送告警消息
+// Send alert notifications through the Feishu API.
 async function sendAlertViaFeishu(agentId: string, message: string) {
   console.log(`[ALERT] sendAlertViaFeishu called with agentId: ${agentId}, message: ${message}`);
   
@@ -133,7 +135,7 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
   
   console.log(`[ALERT] Feishu accounts found:`, Object.keys(feishuAccounts));
   
-  // 获取 agent 对应的飞书账号配置
+  // Resolve the Feishu account config for this agent.
   const accountInfo = getFeishuAccountForAgent(agentId, feishuConfig, bindings);
   if (!accountInfo) {
     console.log(`[ALERT] No Feishu account found for agent ${agentId}`);
@@ -142,7 +144,7 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
   
   console.log(`[ALERT] Using account: ${accountInfo.accountId}, appId: ${accountInfo.appId}`);
   
-  // 从 receiveAgent 的 session 中获取用户的 open_id
+  // Look up the user's open_id from the agent's DM session.
   const testUserId = getFeishuDmUser(agentId);
   console.log(`[ALERT] Feishu DM user found: ${testUserId}`);
   if (!testUserId) {
@@ -154,7 +156,7 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
   console.log(`[ALERT] Using baseUrl: ${baseUrl}`);
   
   try {
-    // 获取 tenant_access_token
+    // Fetch tenant_access_token.
     const tokenResp = await fetch(`${baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -169,11 +171,8 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
     
     const token = tokenData.tenant_access_token;
     
-    // 发送 DM - 使用 user_id_type 确保正确识别用户
-    const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
-    
-    // 先尝试获取用户的 union_id 或 user_id
-    // 如果失败则使用 open_id
+    // Send the DM. Try user_id first, then fall back to open_id.
+    const now = new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Shanghai" });
     const msgResp = await fetch(`${baseUrl}/open-apis/im/v1/messages?receive_id_type=user_id`, {
       method: "POST",
       headers: {
@@ -183,14 +182,14 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
       body: JSON.stringify({
         receive_id: testUserId,
         msg_type: "text",
-        content: JSON.stringify({ text: `🔔 告警通知\n${message}\n(${now})` }),
+        content: JSON.stringify({ text: `🔔 Alert Notification\n${message}\n(${now})` }),
       }),
       signal: AbortSignal.timeout(10000),
     });
     
     const msgData = await msgResp.json();
     
-    // 如果 user_id 失败，尝试 open_id
+    // If user_id fails, retry with open_id.
     if (msgData.code !== 0) {
       const msgResp2 = await fetch(`${baseUrl}/open-apis/im/v1/messages?receive_id_type=open_id`, {
         method: "POST",
@@ -201,7 +200,7 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
         body: JSON.stringify({
           receive_id: testUserId,
           msg_type: "text",
-          content: JSON.stringify({ text: `🔔 告警通知\n${message}\n(${now})` }),
+          content: JSON.stringify({ text: `🔔 Alert Notification\n${message}\n(${now})` }),
         }),
         signal: AbortSignal.timeout(10000),
       });
@@ -228,17 +227,17 @@ async function sendAlertViaFeishu(agentId: string, message: string) {
   }
 }
 
-// 发送告警消息 - 使用 OpenClaw Gateway API
+// Send alert notifications through the OpenClaw Gateway API.
 async function sendAlert(agentId: string, message: string) {
   const openclawConfig = getOpenclawConfig();
   const gatewayPort = openclawConfig.gateway?.port || 18789;
   const gatewayToken = openclawConfig.gateway?.auth?.token || "";
   
-  // 使用 sessionKey 发送到正确的 agent
+  // Use the main session key for the target agent.
   const sessionKey = `agent:${agentId}:main`;
   
   try {
-    // 使用 fire-and-forfetch 不等待响应
+    // Fire and forget; do not wait for the response.
     fetch(`http://127.0.0.1:${gatewayPort}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -248,7 +247,7 @@ async function sendAlert(agentId: string, message: string) {
       },
       body: JSON.stringify({
         session: sessionKey,
-        messages: [{ role: "user", content: `🔔 告警通知: ${message}` }],
+        messages: [{ role: "user", content: `🔔 Alert Notification: ${message}` }],
         max_tokens: 64,
       }),
     }).then(resp => {
@@ -265,17 +264,17 @@ async function sendAlert(agentId: string, message: string) {
   }
 }
 
-// 检查模型是否可用
+// Check whether models are available.
 async function checkModelAlerts(config: AlertConfig) {
   const results: string[] = [];
   const rule = config.rules.find(r => r.id === "model_unavailable");
   if (!rule?.enabled) return results;
 
-  // 读取配置中的所有模型
+  // Load all configured models.
   const openclawConfig = getOpenclawConfig();
   const providers = openclawConfig.models?.providers || {};
 
-  // 测试每个模型
+  // Build a flat list of models to test.
   const allModels: Array<{provider: string, id: string}> = [];
   for (const [providerId, provider] of Object.entries(providers)) {
     const p = provider as any;
@@ -286,7 +285,7 @@ async function checkModelAlerts(config: AlertConfig) {
     }
   }
 
-  // 测试所有模型
+  // Test each model.
   for (const {provider, id} of allModels) {
     try {
       const testStart = Date.now();
@@ -300,25 +299,25 @@ async function checkModelAlerts(config: AlertConfig) {
       const testResult = await testResp.json();
       
       if (!testResult.ok) {
-        results.push(`🚨 模型 ${provider}/${id} 不可用！`);
+        results.push(`🚨 Model ${provider}/${id} is unavailable.`);
         
         const lastAlert = config.lastAlerts?.[`${rule.id}_${provider}_${id}`] || 0;
         const now = Date.now();
         if (now - lastAlert > 60000) {
-          await sendAlertViaFeishu(config.receiveAgent, `模型 ${provider}/${id} 不可用，请检查配置`);
+          await sendAlertViaFeishu(config.receiveAgent, `Model ${provider}/${id} is unavailable. Please check the configuration.`);
           config.lastAlerts = config.lastAlerts || {};
           config.lastAlerts[`${rule.id}_${provider}_${id}`] = now;
         }
       }
     } catch (err: any) {
-      results.push(`🚨 测试模型 ${provider}/${id} 时出错：${err.message}`);
+      results.push(`🚨 Error while testing model ${provider}/${id}: ${err.message}`);
     }
   }
 
   return results;
 }
 
-// 检查 Bot 响应时间
+// Check for bots that have stopped responding.
 async function checkBotResponseAlerts(config: AlertConfig) {
   const results: string[] = [];
   const rule = config.rules.find(r => r.id === "bot_no_response");
@@ -332,7 +331,7 @@ async function checkBotResponseAlerts(config: AlertConfig) {
     );
   } catch { return results; }
 
-  // 如果配置了 targetAgents，只检测指定的机器人
+  // If targetAgents is configured, only monitor those agents.
   const targetAgents = rule.targetAgents;
   if (targetAgents && targetAgents.length > 0) {
     agentIds = agentIds.filter(id => targetAgents.includes(id));
@@ -367,11 +366,11 @@ async function checkBotResponseAlerts(config: AlertConfig) {
     const thresholdMs = (rule.threshold || 300) * 1000;
     if (lastActivity > 0 && (now - lastActivity) > thresholdMs) {
       const mins = Math.round((now - lastActivity) / 60000);
-      results.push(`⚠️ Agent ${agentId} 已 ${mins} 分钟无响应`);
+      results.push(`⚠️ Agent ${agentId} has not responded for ${mins} minutes.`);
       
       const lastAlert = config.lastAlerts?.[`${rule.id}_${agentId}`] || 0;
       if (now - lastAlert > 60000) {
-        await sendAlertViaFeishu(config.receiveAgent, `Agent ${agentId} 已 ${mins} 分钟无响应`);
+        await sendAlertViaFeishu(config.receiveAgent, `Agent ${agentId} has not responded for ${mins} minutes.`);
         config.lastAlerts = config.lastAlerts || {};
         config.lastAlerts[`${rule.id}_${agentId}`] = now;
       }
@@ -381,13 +380,13 @@ async function checkBotResponseAlerts(config: AlertConfig) {
   return results;
 }
 
-// 检查 Cron 失败
+// Check for repeated cron failures.
 async function checkCronAlerts(config: AlertConfig) {
   const results: string[] = [];
-  const rule = config.rules.find(r => r.id === "cron连续_failure");
+  const rule = config.rules.find(r => r.id === CRON_RULE_ID || r.id === LEGACY_CRON_RULE_ID);
   if (!rule?.enabled) return results;
 
-  // 检查 cron 任务状态（简化版：检查 sessions 中是否有失败的 cron 任务）
+  // Check cron status. This remains a simplified placeholder.
   const agentsDir = path.join(OPENCLAW_HOME, "agents");
   let agentIds: string[] = [];
   try {
@@ -396,15 +395,15 @@ async function checkCronAlerts(config: AlertConfig) {
     );
   } catch { return results; }
 
-  // 模拟检查（实际应该记录 cron 失败次数）
-  const mockCronFailures = Math.floor(Math.random() * 5); // 模拟 0-4 次失败
+  // Simulate repeated failures until real cron-failure accounting exists.
+  const mockCronFailures = Math.floor(Math.random() * 5); // Simulates 0-4 failures.
   
   if (mockCronFailures >= (rule.threshold || 3)) {
-    results.push(`🚨 Cron 连续失败 ${mockCronFailures} 次！`);
+    results.push(`🚨 Cron failed ${mockCronFailures} times in a row.`);
     const lastAlert = config.lastAlerts?.[rule.id] || 0;
     const now = Date.now();
-    if (now - lastAlert > 300000) { // 5分钟内不重复
-      await sendAlertViaFeishu(config.receiveAgent, `Cron 连续失败 ${mockCronFailures} 次，请检查定时任务配置`);
+    if (now - lastAlert > 300000) { // Do not repeat within 5 minutes.
+      await sendAlertViaFeishu(config.receiveAgent, `Cron failed ${mockCronFailures} times in a row. Please check the cron configuration.`);
       config.lastAlerts = config.lastAlerts || {};
       config.lastAlerts[rule.id] = now;
     }
@@ -427,7 +426,7 @@ export async function POST() {
 
     const allResults: string[] = [];
 
-    // 执行各项检查
+    // Run each alert check.
     const modelResults = await checkModelAlerts(config);
     allResults.push(...modelResults);
 
@@ -437,7 +436,7 @@ export async function POST() {
     const cronResults = await checkCronAlerts(config);
     allResults.push(...cronResults);
 
-    // 保存配置（更新 lastAlerts）
+    // Persist updated last-alert timestamps.
     saveAlertConfig(config);
 
     return NextResponse.json({

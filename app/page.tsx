@@ -127,7 +127,7 @@ function formatMs(ms: number): string {
   return (ms / 1000).toFixed(1) + "s";
 }
 
-// 趋势折线图
+// Trend line chart.
 function TrendChart({ data, lines, height = 180, t }: { data: DayStat[]; lines: { key: keyof DayStat; color: string; label: string }[]; height?: number; t: TFunc }) {
   if (data.length === 0) return <div className="flex items-center justify-center h-32 text-[var(--text-muted)] text-sm">{t("common.noData")}</div>;
 
@@ -174,7 +174,7 @@ function TrendChart({ data, lines, height = 180, t }: { data: DayStat[]; lines: 
   );
 }
 
-// 响应时间趋势图
+// Response-time trend chart.
 function ResponseTrendChart({ data, height = 180, t }: { data: DayStat[]; height?: number; t: TFunc }) {
   const filtered = data.filter(d => d.avgResponseMs > 0);
   if (filtered.length === 0) return <div className="flex items-center justify-center h-32 text-[var(--text-muted)] text-sm">{t("home.noResponseData")}</div>;
@@ -322,7 +322,7 @@ export default function Home() {
     fetchData(true);
   }, [fetchData, parseApiPayload, t]);
 
-  // 首次加载 - 从 localStorage 恢复测试状态
+  // Initial load: restore saved test state from localStorage.
   useEffect(() => {
     fetchData(!!cachedHomeData);
     const savedTestResults = localStorage.getItem('agentTestResults');
@@ -363,7 +363,7 @@ export default function Home() {
     cachedHomeRefreshInterval = refreshInterval;
   }, [refreshInterval]);
 
-  // 保存测试结果到 localStorage
+  // Persist test results to localStorage.
   useEffect(() => {
     if (testResults) {
       localStorage.setItem('agentTestResults', JSON.stringify(testResults));
@@ -510,7 +510,7 @@ export default function Home() {
       .finally(() => setTestingDmSessions(false));
   }, [data, callTestApi]);
 
-  // 定时刷新
+  // Refresh on the configured interval.
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (refreshInterval > 0) {
@@ -519,7 +519,7 @@ export default function Home() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [refreshInterval, fetchData]);
 
-  // Agent 状态轮询 (30秒)
+  // Poll agent status every 30 seconds.
   useEffect(() => {
     const fetchStatus = () => {
       fetch("/api/agent-status")
@@ -539,7 +539,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Agent 任務活動輪詢 (30秒)
+  // Poll agent activity every 30 seconds.
   useEffect(() => {
     const fetchActivity = () => {
       fetch("/api/agent-activity", { cache: "no-store" })
@@ -588,7 +588,7 @@ export default function Home() {
     }));
   return (
     <div className="p-3 md:p-4 max-w-6xl mx-auto">
-      {/* 头部 */}
+      {/* Header */}
       <div className="flex flex-col gap-2 mb-3 md:flex-row md:items-center md:justify-between">
         <div className="hidden md:block">
           <h1 className="text-xl font-bold flex items-center gap-2">
@@ -662,14 +662,14 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 卡片墙 */}
+      {/* Agent cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {data.agents.map((agent) => (
           <AgentCard key={agent.id} agent={agent} gatewayPort={data.gateway?.port || 18789} gatewayToken={data.gateway?.token} gatewayHost={data.gateway?.host} t={t} testResult={testResults?.[agent.id]} platformTestResults={platformTestResults || undefined} sessionTestResult={sessionTestResults?.[agent.id]} agentState={agentStates[agent.id]} dmSessionResults={dmSessionResults || undefined} providerAccessModeMap={providerAccessModeMap} modelOptions={modelOptions} onModelChange={changeAgentModel} />
         ))}
       </div>
 
-      {/* Agent 任務追蹤 */}
+      {/* Agent task tracking */}
       {agentActivity && agentActivity.some(a => a.state !== "offline") && (
         <div className="mt-4 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)]">
           <h2 className="text-sm font-semibold text-[var(--text-muted)] mb-3">📋 {t("home.agentTaskTracking")}</h2>
@@ -766,7 +766,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 汇总统计趋势 */}
+      {/* Aggregate trend charts */}
       {allStats && (
         <div className="mt-8 p-5 rounded-xl border border-[var(--border)] bg-[var(--card)]">
           <div className="flex flex-col gap-2 mb-4 md:flex-row md:items-center md:justify-between">
@@ -825,7 +825,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 群聊管理 */}
+      {/* Group chat topology */}
       {data.groupChats && data.groupChats.length > 0 && (
         <div className="mt-8 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)]">
           <h2 className="text-sm font-semibold text-[var(--text-muted)] mb-3">
@@ -854,7 +854,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Fallback 信息 */}
+      {/* Fallback info */}
       {data.defaults.fallbacks.length > 0 && (
         <div className="mt-8 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)]">
           <h2 className="text-sm font-semibold text-[var(--text-muted)] mb-2">

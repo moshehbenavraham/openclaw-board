@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ agentId
     const sessions = JSON.parse(raw);
 
     const list = Object.entries(sessions).map(([key, val]: [string, any]) => {
-      // 解析 session 类型
+      // Derive the session type from the key.
       let type = "unknown";
       let target = "";
       if (key.endsWith(":main")) {
@@ -57,7 +57,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ agentId
       };
     });
 
-    // 按最近活跃排序
+    // Sort by most recent activity.
     list.sort((a, b) => b.updatedAt - a.updatedAt);
 
     return NextResponse.json({ agentId, sessions: list });

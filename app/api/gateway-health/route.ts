@@ -197,9 +197,9 @@ export async function GET() {
     const openclawVersion = await getOpenclawVersion();
     // If HTTP probe fails due transport/runtime issues, attempt CLI probe before declaring down.
     const raw = err.cause?.code === "ECONNREFUSED"
-      ? "Gateway 未运行"
+      ? "Gateway is not running"
       : err.name === "AbortError"
-        ? "请求超时"
+        ? "Request timed out"
         : err.message;
     const token = (() => {
       try {

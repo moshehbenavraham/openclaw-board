@@ -195,7 +195,7 @@ async function testFeishu(
         body: JSON.stringify({
           receive_id: testUserId,
           msg_type: "text",
-          content: JSON.stringify({ text: `[Platform Test] ${botName} 联通测试 ✅ (${now})` }),
+          content: JSON.stringify({ text: `[Platform Test] ${botName} connectivity test ✅ (${now})` }),
         }),
         signal: AbortSignal.timeout(15000),
       }
@@ -541,7 +541,7 @@ async function testTelegram(
     const result = runOpenClawMessageSend(
       "telegram",
       testChatId,
-      `[Platform Test] Telegram 联通测试 ✅ (${now})`,
+      `[Platform Test] Telegram connectivity test ✅ (${now})`,
       ["--silent"]
     );
     const elapsed = Date.now() - startTime;
@@ -659,7 +659,7 @@ async function testYuanbao(
     const sendResult = await sendYuanbaoMessage({
       account,
       toAccount: testUserId,
-      text: `[Platform Test] Yuanbao 联通测试 ✅ (${now})`,
+      text: `[Platform Test] Yuanbao connectivity test ✅ (${now})`,
       fromAccount: account.botId,
       ctx: {
         account,
@@ -729,7 +729,7 @@ async function testGenericChannel(
     const result = runOpenClawMessageSend(
       channel,
       testUserId,
-      `[Platform Test] ${displayName} 联通测试 ✅ (${now})`,
+      `[Platform Test] ${displayName} connectivity test ✅ (${now})`,
       ["--silent"]
     );
     const elapsed = Date.now() - startTime;
@@ -962,7 +962,7 @@ async function testWhatsapp(
     const result = runOpenClawMessageSend(
       "whatsapp",
       testUserId,
-      `[Platform Test] WhatsApp 联通测试 ✅ (${now})`
+      `[Platform Test] WhatsApp connectivity test ✅ (${now})`
     );
 
     const elapsed = Date.now() - startTime;
@@ -1037,8 +1037,8 @@ async function testQqbot(
         : `${QQBOT_API_BASE}/v2/users/${targetId}/messages`;
 
     const body = kind === "channel"
-      ? { content: `[Platform Test] QQBot 联通测试 ✅ (${now})` }
-      : { content: `[Platform Test] QQBot 联通测试 ✅ (${now})`, msg_type: 0 };
+      ? { content: `[Platform Test] QQBot connectivity test ✅ (${now})` }
+      : { content: `[Platform Test] QQBot connectivity test ✅ (${now})`, msg_type: 0 };
 
     const msgResp = await fetch(url, {
       method: "POST",
