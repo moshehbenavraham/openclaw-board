@@ -10,3 +10,5 @@ next-env.d.ts
 .env.development.local
 /.openclaw
 /public/assets/pixel-office/*.mp3
+test-results/
+logs/

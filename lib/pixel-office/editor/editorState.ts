@@ -1,109 +1,123 @@
-import { EditTool, TileType } from '../types'
-import type { TileType as TileTypeVal, OfficeLayout, FloorColor } from '../types'
-import { UNDO_STACK_MAX_SIZE, DEFAULT_FLOOR_COLOR, DEFAULT_WALL_COLOR } from '../constants'
+import {
+	DEFAULT_FLOOR_COLOR,
+	DEFAULT_WALL_COLOR,
+	UNDO_STACK_MAX_SIZE,
+} from "../constants";
+import type {
+	FloorColor,
+	OfficeLayout,
+	TileType as TileTypeVal,
+} from "../types";
+import { EditTool, TileType } from "../types";
 
 export class EditorState {
-  isEditMode = false
-  activeTool: EditTool = EditTool.SELECT
-  selectedTileType: TileTypeVal = TileType.FLOOR_1
-  selectedFurnitureType: string = 'desk'
+	isEditMode = false;
+	activeTool: EditTool = EditTool.SELECT;
+	selectedTileType: TileTypeVal = TileType.FLOOR_1;
+	selectedFurnitureType: string = "desk";
 
-  floorColor: FloorColor = { ...DEFAULT_FLOOR_COLOR }
-  wallColor: FloorColor = { ...DEFAULT_WALL_COLOR }
+	floorColor: FloorColor = { ...DEFAULT_FLOOR_COLOR };
+	wallColor: FloorColor = { ...DEFAULT_WALL_COLOR };
 
-  // Tracks toggle direction during wall drag
-  wallDragAdding: boolean | null = null
+	// Tracks toggle direction during wall drag
+	wallDragAdding: boolean | null = null;
 
-  // Picked furniture color (copied by pick tool)
-  pickedFurnitureColor: FloorColor | null = null
+	// Picked furniture color (copied by pick tool)
+	pickedFurnitureColor: FloorColor | null = null;
 
-  // Ghost preview position
-  ghostCol = -1
-  ghostRow = -1
-  ghostValid = false
+	// Ghost preview position
+	ghostCol = -1;
+	ghostRow = -1;
+	ghostValid = false;
 
-  // Selection
-  selectedFurnitureUid: string | null = null
+	// Selection
+	selectedFurnitureUid: string | null = null;
 
-  // Mouse drag state
-  isDragging = false
+	// Mouse drag state
+	isDragging = false;
 
-  // Undo / Redo stacks
-  undoStack: OfficeLayout[] = []
-  redoStack: OfficeLayout[] = []
+	// Undo / Redo stacks
+	undoStack: OfficeLayout[] = [];
+	redoStack: OfficeLayout[] = [];
 
-  isDirty = false
+	isDirty = false;
 
-  // Drag-to-move state
-  dragUid: string | null = null
-  dragStartCol = 0
-  dragStartRow = 0
-  dragOffsetCol = 0
-  dragOffsetRow = 0
-  isDragMoving = false
+	// Drag-to-move state
+	dragUid: string | null = null;
+	dragStartCol = 0;
+	dragStartRow = 0;
+	dragOffsetCol = 0;
+	dragOffsetRow = 0;
+	isDragMoving = false;
 
-  pushUndo(layout: OfficeLayout): void {
-    this.undoStack.push(layout)
-    if (this.undoStack.length > UNDO_STACK_MAX_SIZE) {
-      this.undoStack.shift()
-    }
-  }
+	pushUndo(layout: OfficeLayout): void {
+		this.undoStack.push(layout);
+		if (this.undoStack.length > UNDO_STACK_MAX_SIZE) {
+			this.undoStack.shift();
+		}
+	}
 
-  popUndo(): OfficeLayout | null {
-    return this.undoStack.pop() || null
-  }
+	popUndo(): OfficeLayout | null {
+		return this.undoStack.pop() || null;
+	}
 
-  pushRedo(layout: OfficeLayout): void {
-    this.redoStack.push(layout)
-    if (this.redoStack.length > UNDO_STACK_MAX_SIZE) {
-      this.redoStack.shift()
-    }
-  }
+	pushRedo(layout: OfficeLayout): void {
+		this.redoStack.push(layout);
+		if (this.redoStack.length > UNDO_STACK_MAX_SIZE) {
+			this.redoStack.shift();
+		}
+	}
 
-  popRedo(): OfficeLayout | null {
-    return this.redoStack.pop() || null
-  }
+	popRedo(): OfficeLayout | null {
+		return this.redoStack.pop() || null;
+	}
 
-  clearRedo(): void {
-    this.redoStack = []
-  }
+	clearRedo(): void {
+		this.redoStack = [];
+	}
 
-  clearSelection(): void {
-    this.selectedFurnitureUid = null
-  }
+	clearSelection(): void {
+		this.selectedFurnitureUid = null;
+	}
 
-  clearGhost(): void {
-    this.ghostCol = -1
-    this.ghostRow = -1
-    this.ghostValid = false
-  }
+	clearGhost(): void {
+		this.ghostCol = -1;
+		this.ghostRow = -1;
+		this.ghostValid = false;
+	}
 
-  startDrag(uid: string, startCol: number, startRow: number, offsetCol: number, offsetRow: number): void {
-    this.dragUid = uid
-    this.dragStartCol = startCol
-    this.dragStartRow = startRow
-    this.dragOffsetCol = offsetCol
-    this.dragOffsetRow = offsetRow
-    this.isDragMoving = false
-  }
+	startDrag(
+		uid: string,
+		startCol: number,
+		startRow: number,
+		offsetCol: number,
+		offsetRow: number,
+	): void {
+		this.dragUid = uid;
+		this.dragStartCol = startCol;
+		this.dragStartRow = startRow;
+		this.dragOffsetCol = offsetCol;
+		this.dragOffsetRow = offsetRow;
+		this.isDragMoving = false;
+	}
 
-  clearDrag(): void {
-    this.dragUid = null
-    this.isDragMoving = false
-  }
+	clearDrag(): void {
+		this.dragUid = null;
+		this.isDragMoving = false;
+	}
 
-  reset(): void {
-    this.activeTool = EditTool.SELECT
-    this.selectedFurnitureUid = null
-    this.ghostCol = -1
-    this.ghostRow = -1
-    this.ghostValid = false
-    this.isDragging = false
-    this.wallDragAdding = null
-    this.undoStack = []
-    this.redoStack = []
-    this.isDirty = false
-    this.dragUid = null
-    this.isDragMoving = false
-  }
+	reset(): void {
+		this.activeTool = EditTool.SELECT;
+		this.selectedFurnitureUid = null;
+		this.ghostCol = -1;
+		this.ghostRow = -1;
+		this.ghostValid = false;
+		this.isDragging = false;
+		this.wallDragAdding = null;
+		this.undoStack = [];
+		this.redoStack = [];
+		this.isDirty = false;
+		this.dragUid = null;
+		this.isDragMoving = false;
+	}
 }

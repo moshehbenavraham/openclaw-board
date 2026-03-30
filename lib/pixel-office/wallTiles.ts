@@ -9,21 +9,26 @@
  * Bitmask convention: N=1, E=2, S=4, W=8. Out-of-bounds = NOT wall.
  */
 
-import type { SpriteData, TileType as TileTypeVal, FloorColor, FurnitureInstance } from './types'
-import { TileType, TILE_SIZE } from './types'
-import { getColorizedSprite } from './colorize'
+import { getColorizedSprite } from "./colorize";
+import type {
+	FloorColor,
+	FurnitureInstance,
+	SpriteData,
+	TileType as TileTypeVal,
+} from "./types";
+import { TILE_SIZE, TileType } from "./types";
 
 /** 16 wall sprites indexed by bitmask (0-15) */
-let wallSprites: SpriteData[] | null = null
+let wallSprites: SpriteData[] | null = null;
 
 /** Set wall sprites (called once when extension sends wallTilesLoaded) */
 export function setWallSprites(sprites: SpriteData[]): void {
-  wallSprites = sprites
+	wallSprites = sprites;
 }
 
 /** Check if wall sprites have been loaded */
 export function hasWallSprites(): boolean {
-  return wallSprites !== null
+	return wallSprites !== null;
 }
 
 /**
@@ -31,27 +36,27 @@ export function hasWallSprites(): boolean {
  * Returns the sprite + Y offset, or null to fall back to solid WALL_COLOR.
  */
 export function getWallSprite(
-  col: number,
-  row: number,
-  tileMap: TileTypeVal[][],
+	col: number,
+	row: number,
+	tileMap: TileTypeVal[][],
 ): { sprite: SpriteData; offsetY: number } | null {
-  if (!wallSprites) return null
+	if (!wallSprites) return null;
 
-  const tmRows = tileMap.length
-  const tmCols = tmRows > 0 ? tileMap[0].length : 0
+	const tmRows = tileMap.length;
+	const tmCols = tmRows > 0 ? tileMap[0].length : 0;
 
-  // Build 4-bit neighbor bitmask
-  let mask = 0
-  if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1            // N
-  if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2   // E
-  if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4   // S
-  if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8            // W
+	// Build 4-bit neighbor bitmask
+	let mask = 0;
+	if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1; // N
+	if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2; // E
+	if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4; // S
+	if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8; // W
 
-  const sprite = wallSprites[mask]
-  if (!sprite) return null
+	const sprite = wallSprites[mask];
+	if (!sprite) return null;
 
-  // Anchor sprite at bottom of tile — tall sprites extend upward
-  return { sprite, offsetY: TILE_SIZE - sprite.length }
+	// Anchor sprite at bottom of tile — tall sprites extend upward
+	return { sprite, offsetY: TILE_SIZE - sprite.length };
 }
 
 /**
@@ -60,30 +65,33 @@ export function getWallSprite(
  * Returns the colorized sprite + Y offset, or null if no wall sprites loaded.
  */
 export function getColorizedWallSprite(
-  col: number,
-  row: number,
-  tileMap: TileTypeVal[][],
-  color: FloorColor,
+	col: number,
+	row: number,
+	tileMap: TileTypeVal[][],
+	color: FloorColor,
 ): { sprite: SpriteData; offsetY: number } | null {
-  if (!wallSprites) return null
+	if (!wallSprites) return null;
 
-  const tmRows = tileMap.length
-  const tmCols = tmRows > 0 ? tileMap[0].length : 0
+	const tmRows = tileMap.length;
+	const tmCols = tmRows > 0 ? tileMap[0].length : 0;
 
-  // Build 4-bit neighbor bitmask (same as getWallSprite)
-  let mask = 0
-  if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1            // N
-  if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2   // E
-  if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4   // S
-  if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8            // W
+	// Build 4-bit neighbor bitmask (same as getWallSprite)
+	let mask = 0;
+	if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1; // N
+	if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2; // E
+	if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4; // S
+	if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8; // W
 
-  const sprite = wallSprites[mask]
-  if (!sprite) return null
+	const sprite = wallSprites[mask];
+	if (!sprite) return null;
 
-  const cacheKey = `wall-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`
-  const colorized = getColorizedSprite(cacheKey, sprite, { ...color, colorize: true })
+	const cacheKey = `wall-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`;
+	const colorized = getColorizedSprite(cacheKey, sprite, {
+		...color,
+		colorize: true,
+	});
 
-  return { sprite: colorized, offsetY: TILE_SIZE - sprite.length }
+	return { sprite: colorized, offsetY: TILE_SIZE - sprite.length };
 }
 
 /**
@@ -91,33 +99,33 @@ export function getColorizedWallSprite(
  * in z-sorting with furniture and characters.
  */
 export function getWallInstances(
-  tileMap: TileTypeVal[][],
-  tileColors?: Array<FloorColor | null>,
-  cols?: number,
+	tileMap: TileTypeVal[][],
+	tileColors?: Array<FloorColor | null>,
+	cols?: number,
 ): FurnitureInstance[] {
-  if (!wallSprites) return []
-  const tmRows = tileMap.length
-  const tmCols = tmRows > 0 ? tileMap[0].length : 0
-  const layoutCols = cols ?? tmCols
-  const instances: FurnitureInstance[] = []
-  for (let r = 0; r < tmRows; r++) {
-    for (let c = 0; c < tmCols; c++) {
-      if (tileMap[r][c] !== TileType.WALL) continue
-      const colorIdx = r * layoutCols + c
-      const wallColor = tileColors?.[colorIdx]
-      const wallInfo = wallColor
-        ? getColorizedWallSprite(c, r, tileMap, wallColor)
-        : getWallSprite(c, r, tileMap)
-      if (!wallInfo) continue
-      instances.push({
-        sprite: wallInfo.sprite,
-        x: c * TILE_SIZE,
-        y: r * TILE_SIZE + wallInfo.offsetY,
-        zY: (r + 1) * TILE_SIZE,
-      })
-    }
-  }
-  return instances
+	if (!wallSprites) return [];
+	const tmRows = tileMap.length;
+	const tmCols = tmRows > 0 ? tileMap[0].length : 0;
+	const layoutCols = cols ?? tmCols;
+	const instances: FurnitureInstance[] = [];
+	for (let r = 0; r < tmRows; r++) {
+		for (let c = 0; c < tmCols; c++) {
+			if (tileMap[r][c] !== TileType.WALL) continue;
+			const colorIdx = r * layoutCols + c;
+			const wallColor = tileColors?.[colorIdx];
+			const wallInfo = wallColor
+				? getColorizedWallSprite(c, r, tileMap, wallColor)
+				: getWallSprite(c, r, tileMap);
+			if (!wallInfo) continue;
+			instances.push({
+				sprite: wallInfo.sprite,
+				x: c * TILE_SIZE,
+				y: r * TILE_SIZE + wallInfo.offsetY,
+				zY: (r + 1) * TILE_SIZE,
+			});
+		}
+	}
+	return instances;
 }
 
 /**
@@ -125,39 +133,61 @@ export function getWallInstances(
  * Uses same Colorize algorithm as floor tiles: 50% gray → HSL.
  */
 export function wallColorToHex(color: FloorColor): string {
-  const { h, s, b, c } = color
-  // Start with 50% gray (wall base)
-  let lightness = 0.5
+	const { h, s, b, c } = color;
+	// Start with 50% gray (wall base)
+	let lightness = 0.5;
 
-  // Apply contrast
-  if (c !== 0) {
-    const factor = (100 + c) / 100
-    lightness = 0.5 + (lightness - 0.5) * factor
-  }
+	// Apply contrast
+	if (c !== 0) {
+		const factor = (100 + c) / 100;
+		lightness = 0.5 + (lightness - 0.5) * factor;
+	}
 
-  // Apply brightness
-  if (b !== 0) {
-    lightness = lightness + b / 200
-  }
+	// Apply brightness
+	if (b !== 0) {
+		lightness = lightness + b / 200;
+	}
 
-  lightness = Math.max(0, Math.min(1, lightness))
+	lightness = Math.max(0, Math.min(1, lightness));
 
-  // HSL to hex (same as colorize.ts hslToHex)
-  const satFrac = s / 100
-  const ch = (1 - Math.abs(2 * lightness - 1)) * satFrac
-  const hp = h / 60
-  const x = ch * (1 - Math.abs(hp % 2 - 1))
-  let r1 = 0, g1 = 0, b1 = 0
+	// HSL to hex (same as colorize.ts hslToHex)
+	const satFrac = s / 100;
+	const ch = (1 - Math.abs(2 * lightness - 1)) * satFrac;
+	const hp = h / 60;
+	const x = ch * (1 - Math.abs((hp % 2) - 1));
+	let r1 = 0,
+		g1 = 0,
+		b1 = 0;
 
-  if (hp < 1) { r1 = ch; g1 = x; b1 = 0 }
-  else if (hp < 2) { r1 = x; g1 = ch; b1 = 0 }
-  else if (hp < 3) { r1 = 0; g1 = ch; b1 = x }
-  else if (hp < 4) { r1 = 0; g1 = x; b1 = ch }
-  else if (hp < 5) { r1 = x; g1 = 0; b1 = ch }
-  else { r1 = ch; g1 = 0; b1 = x }
+	if (hp < 1) {
+		r1 = ch;
+		g1 = x;
+		b1 = 0;
+	} else if (hp < 2) {
+		r1 = x;
+		g1 = ch;
+		b1 = 0;
+	} else if (hp < 3) {
+		r1 = 0;
+		g1 = ch;
+		b1 = x;
+	} else if (hp < 4) {
+		r1 = 0;
+		g1 = x;
+		b1 = ch;
+	} else if (hp < 5) {
+		r1 = x;
+		g1 = 0;
+		b1 = ch;
+	} else {
+		r1 = ch;
+		g1 = 0;
+		b1 = x;
+	}
 
-  const m = lightness - ch / 2
-  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round((v + m) * 255)))
+	const m = lightness - ch / 2;
+	const clamp = (v: number) =>
+		Math.max(0, Math.min(255, Math.round((v + m) * 255)));
 
-  return `#${clamp(r1).toString(16).padStart(2, '0')}${clamp(g1).toString(16).padStart(2, '0')}${clamp(b1).toString(16).padStart(2, '0')}`
+	return `#${clamp(r1).toString(16).padStart(2, "0")}${clamp(g1).toString(16).padStart(2, "0")}${clamp(b1).toString(16).padStart(2, "0")}`;
 }

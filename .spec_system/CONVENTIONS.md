@@ -89,9 +89,13 @@
 | Framework | Next.js App Router | `app/`, `next.config.mjs` |
 | Type Safety | TypeScript | `tsconfig.json` |
 | Styling | Tailwind CSS | `@tailwindcss/postcss` |
-| Testing | not configured | add with hardening work |
-| Linting | not configured | add with hardening work |
+| Formatting | Biome | `biome.json` |
+| Testing | Vitest | `vitest.config.ts` |
+| Linting | Biome | `biome.json` |
+| Git Hooks | husky + lint-staged | `.husky/`, `.lintstagedrc` |
+| Dev Server | npm run dev | `next.config.mjs` |
 | Database | not applicable | filesystem-backed runtime |
+| Observability | Pino | `lib/logger.ts` |
 
 ## Security Toggles
 

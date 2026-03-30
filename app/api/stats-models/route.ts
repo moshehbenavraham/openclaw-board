@@ -1,120 +1,194 @@
+import fs from "node:fs";
+import path from "node:path";
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 // 30-second in-memory cache.
-let statsCache: { data: any; ts: number } | null = null;
+let statsCache: { data: unknown; ts: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
 interface ModelStat {
-  modelId: string;
-  provider: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  messageCount: number;
-  avgResponseMs: number;
+	modelId: string;
+	provider: string;
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+	messageCount: number;
+	avgResponseMs: number;
 }
 
 interface InternalModelStat extends ModelStat {
-  responseTimes: number[];
+	responseTimes: number[];
 }
 
 export async function GET() {
-  // Return cached data when available.
-  if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
-    return NextResponse.json(statsCache.data);
-  }
+	// Return cached data when available.
+	if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
+		return NextResponse.json(statsCache.data);
+	}
 
-  try {
-    const agentsDir = path.join(OPENCLAW_HOME, "agents");
-    let agentIds: string[];
-    try {
-      agentIds = fs.readdirSync(agentsDir).filter(f => fs.statSync(path.join(agentsDir, f)).isDirectory());
-    } catch { agentIds = []; }
+	try {
+		const agentsDir = path.join(OPENCLAW_HOME, "agents");
+		let agentIds: string[];
+		try {
+			agentIds = fs
+				.readdirSync(agentsDir)
+				.filter((f) => fs.statSync(path.join(agentsDir, f)).isDirectory());
+		} catch {
+			agentIds = [];
+		}
 
-    const modelMap: Record<string, InternalModelStat> = {};
+		const modelMap: Record<string, InternalModelStat> = {};
 
-    // Process all agents in parallel.
-    await Promise.all(agentIds.map(async (agentId) => {
-      const sessionsDir = path.join(agentsDir, agentId, "sessions");
-      let fileNames: string[];
-      try {
-        fileNames = (await fs.promises.readdir(sessionsDir)).filter(f => f.endsWith(".jsonl") && !f.includes(".deleted."));
-      } catch { return; }
+		// Process all agents in parallel.
+		await Promise.all(
+			agentIds.map(async (agentId) => {
+				const sessionsDir = path.join(agentsDir, agentId, "sessions");
+				let fileNames: string[];
+				try {
+					fileNames = (await fs.promises.readdir(sessionsDir)).filter(
+						(f) => f.endsWith(".jsonl") && !f.includes(".deleted."),
+					);
+				} catch {
+					return;
+				}
 
-      // Read all JSONL files in parallel.
-      const fileContents = await Promise.all(fileNames.map(async (file) => {
-        try { return await fs.promises.readFile(path.join(sessionsDir, file), "utf-8"); } catch { return null; }
-      }));
+				// Read all JSONL files in parallel.
+				const fileContents = await Promise.all(
+					fileNames.map(async (file) => {
+						try {
+							return await fs.promises.readFile(
+								path.join(sessionsDir, file),
+								"utf-8",
+							);
+						} catch {
+							return null;
+						}
+					}),
+				);
 
-      for (const content of fileContents) {
-        if (!content) continue;
+				for (const content of fileContents) {
+					if (!content) continue;
 
-        const lines = content.trim().split("\n");
+					const lines = content.trim().split("\n");
 
-        for (const line of lines) {
-          let entry: any;
-          try { entry = JSON.parse(line); } catch { continue; }
-          if (entry.type !== "message") continue;
-          const msg = entry.message;
-          if (!msg || !entry.timestamp) continue;
+					for (const line of lines) {
+						let entry: {
+							type?: string;
+							message?: {
+								role?: string;
+								stopReason?: string;
+								usage?: {
+									input?: number;
+									output?: number;
+									totalTokens?: number;
+								};
+								model?: string;
+								provider?: string;
+							};
+							timestamp?: string;
+						};
+						try {
+							entry = JSON.parse(line);
+						} catch {
+							continue;
+						}
+						if (entry.type !== "message") continue;
+						const msg = entry.message;
+						if (!msg || !entry.timestamp) continue;
 
-          if (msg.role === "assistant" && msg.usage && msg.model) {
-            const key = `${msg.provider || "unknown"}/${msg.model}`;
-            if (!modelMap[key]) {
-              modelMap[key] = {
-                modelId: msg.model,
-                provider: msg.provider || "unknown",
-                inputTokens: 0, outputTokens: 0, totalTokens: 0,
-                messageCount: 0, avgResponseMs: 0, responseTimes: [],
-              };
-            }
-            const m = modelMap[key];
-            m.inputTokens += msg.usage.input || 0;
-            m.outputTokens += msg.usage.output || 0;
-            m.totalTokens += msg.usage.totalTokens || 0;
-            m.messageCount += 1;
-          }
-        }
+						if (msg.role === "assistant" && msg.usage && msg.model) {
+							const key = `${msg.provider || "unknown"}/${msg.model}`;
+							if (!modelMap[key]) {
+								modelMap[key] = {
+									modelId: msg.model,
+									provider: msg.provider || "unknown",
+									inputTokens: 0,
+									outputTokens: 0,
+									totalTokens: 0,
+									messageCount: 0,
+									avgResponseMs: 0,
+									responseTimes: [],
+								};
+							}
+							const m = modelMap[key];
+							m.inputTokens += msg.usage.input || 0;
+							m.outputTokens += msg.usage.output || 0;
+							m.totalTokens += msg.usage.totalTokens || 0;
+							m.messageCount += 1;
+						}
+					}
 
-        // O(n) response-time calculation.
-        let lastUserTs: string | null = null;
-        for (const line of lines) {
-          let entry: any;
-          try { entry = JSON.parse(line); } catch { continue; }
-          if (entry.type !== "message" || !entry.message || !entry.timestamp) continue;
-          const msg = entry.message;
-          if (msg.role === "user") {
-            lastUserTs = entry.timestamp;
-          } else if (msg.role === "assistant" && msg.stopReason === "stop" && lastUserTs && msg.model) {
-            const diffMs = new Date(entry.timestamp).getTime() - new Date(lastUserTs).getTime();
-            if (diffMs > 0 && diffMs < 600000) {
-              const key = `${msg.provider || "unknown"}/${msg.model}`;
-              if (modelMap[key]) {
-                modelMap[key].responseTimes.push(diffMs);
-              }
-            }
-            lastUserTs = null;
-          }
-        }
-      }
-    }));
+					// O(n) response-time calculation.
+					let lastUserTs: string | null = null;
+					for (const line of lines) {
+						let entry: {
+							type?: string;
+							message?: {
+								role?: string;
+								stopReason?: string;
+								usage?: {
+									input?: number;
+									output?: number;
+									totalTokens?: number;
+								};
+								model?: string;
+								provider?: string;
+							};
+							timestamp?: string;
+						};
+						try {
+							entry = JSON.parse(line);
+						} catch {
+							continue;
+						}
+						if (entry.type !== "message" || !entry.message || !entry.timestamp)
+							continue;
+						const msg = entry.message;
+						if (msg.role === "user") {
+							lastUserTs = entry.timestamp;
+						} else if (
+							msg.role === "assistant" &&
+							msg.stopReason === "stop" &&
+							lastUserTs &&
+							msg.model
+						) {
+							const diffMs =
+								new Date(entry.timestamp).getTime() -
+								new Date(lastUserTs).getTime();
+							if (diffMs > 0 && diffMs < 600000) {
+								const key = `${msg.provider || "unknown"}/${msg.model}`;
+								if (modelMap[key]) {
+									modelMap[key].responseTimes.push(diffMs);
+								}
+							}
+							lastUserTs = null;
+						}
+					}
+				}
+			}),
+		);
 
-    const models: ModelStat[] = Object.values(modelMap).map(({ responseTimes, ...rest }) => {
-      if (responseTimes.length > 0) {
-        rest.avgResponseMs = Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length);
-      }
-      return rest;
-    });
+		const models: ModelStat[] = Object.values(modelMap).map(
+			({ responseTimes, ...rest }) => {
+				if (responseTimes.length > 0) {
+					rest.avgResponseMs = Math.round(
+						responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length,
+					);
+				}
+				return rest;
+			},
+		);
 
-    models.sort((a, b) => b.totalTokens - a.totalTokens);
+		models.sort((a, b) => b.totalTokens - a.totalTokens);
 
-    const data = { models };
-    statsCache = { data, ts: Date.now() };
-    return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+		const data = { models };
+		statsCache = { data, ts: Date.now() };
+		return NextResponse.json(data);
+	} catch (err: unknown) {
+		return NextResponse.json(
+			{ error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
+	}
 }

@@ -1,18 +1,18 @@
 type ConfigCacheEntry = {
-  data: any;
-  ts: number;
+	data: any;
+	ts: number;
 };
 
 let configCache: ConfigCacheEntry | null = null;
 
 export function getConfigCache(): ConfigCacheEntry | null {
-  return configCache;
+	return configCache;
 }
 
 export function setConfigCache(entry: ConfigCacheEntry): void {
-  configCache = entry;
+	configCache = entry;
 }
 
 export function clearConfigCache(): void {
-  configCache = null;
+	configCache = null;
 }

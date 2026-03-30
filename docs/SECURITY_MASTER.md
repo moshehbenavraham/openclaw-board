@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document is the living security plan for OpenClaw Dashboard. It turns the March 29-30, 2026 audit in `docs/ongoing-projects/` into an implementation policy, remediation sequence, and documentation standard for the repo.
+This document is the living security plan for OpenClaw Dashboard. The canonical in-scope backlog now lives in `.spec_system/PRD/PRD.md`. `docs/ongoing-projects/security-items-outside-prd-scope.md` is reserved for work intentionally excluded from that PRD.
 
-Use this file as the top-level security source of truth. Use `docs/SECURITY_FINDINGS.md` as the living register for individual findings and statuses.
+Use this file as the top-level security policy source. Use `docs/SECURITY_FINDINGS.md` as the living register for individual finding statuses.
 
 ## Current Security Posture
 
-- The audit found 35 unique findings after deduplication.
+- The audit baseline captured 35 unique findings after deduplication.
 - The highest-risk themes are missing authentication, gateway token leakage, unprotected side effects, filesystem trust, and denial-of-service exposure.
 - The dashboard's read-only operator value is worth preserving, but sensitive and mutating behavior must move behind safe defaults.
 
@@ -24,7 +24,7 @@ Use this file as the top-level security source of truth. Use `docs/SECURITY_FIND
 8. Keep Cloudflare Access sessions for the dashboard capped at 24 hours, with approved-email One-Time PIN as the primary login method for `moshehwebservices@live.com`.
 9. Require a second app-side protection layer for sensitive routes after the Cloudflare boundary by using an operator code challenge and HTTP-only signed cookie.
 10. Keep the operator code secret and cookie-signing secret in root `.env`, with matching placeholders in root `.env.example`.
-11. Keep this plan and the findings register current as code changes land.
+11. Keep this plan, the PRD, and the findings register current as code changes land.
 
 ## Secure Default Policy
 
@@ -45,15 +45,16 @@ Use this file as the top-level security source of truth. Use `docs/SECURITY_FIND
 
 ## Documentation Policy
 
-- Update this file when remediation scope, env toggles, or security architecture changes.
+- Update `.spec_system/PRD/PRD.md` whenever remediation scope, session ownership, env toggles, or security architecture changes.
 - Update `docs/SECURITY_FINDINGS.md` whenever a finding changes status.
 - Keep deployment guidance aligned with the current secure defaults.
 - Link validation evidence to the finding register whenever a fix is marked verified.
+- Keep `docs/ongoing-projects/security-items-outside-prd-scope.md` limited to work explicitly excluded from the PRD.
 - Document the dashboard hostname, allowed email, Cloudflare Access session duration, and approved-email One-Time PIN behavior whenever those settings change.
 
 ## Remediation Priorities
 
-### Phase 0
+### Phase 00
 
 Goal: Prevent immediate gateway compromise and uncontrolled side effects.
 
@@ -62,7 +63,7 @@ Goal: Prevent immediate gateway compromise and uncontrolled side effects.
 - Remove `GET` aliases from side-effect routes.
 - Change insecure network-exposure defaults in deployment guidance.
 
-### Phase 1
+### Phase 01
 
 Goal: Close remaining Critical and High findings while preserving operator workflows.
 
@@ -72,7 +73,7 @@ Goal: Close remaining Critical and High findings while preserving operator workf
 - Rate limit or gate abuse-prone routes.
 - Remove internal self-SSRF and placeholder side effects.
 
-### Phase 2
+### Phase 02
 
 Goal: Add input validation, resource bounds, and shared security utilities.
 
@@ -82,7 +83,7 @@ Goal: Add input validation, resource bounds, and shared security utilities.
 - Cache heavy analytics routes.
 - Sanitize response errors and redact operator metadata.
 
-### Phase 3
+### Phase 03
 
 Goal: Finish hardening, cleanup, and residual-risk reduction.
 
@@ -93,10 +94,11 @@ Goal: Finish hardening, cleanup, and residual-risk reduction.
 
 ## Required Living Artifacts
 
-- `docs/SECURITY_MASTER.md`: policy, priorities, secure-default rules
+- `docs/SECURITY_MASTER.md`: policy, priorities, and secure-default rules
 - `docs/SECURITY_FINDINGS.md`: deduplicated finding register and status tracker
 - `.spec_system/SECURITY-COMPLIANCE.md`: spec-system posture tracking
-- `.spec_system/PRD/PRD.md`: product requirements that include the security hardening scope
+- `.spec_system/PRD/PRD.md`: canonical in-scope remediation scope and backlog mapping
+- `docs/ongoing-projects/security-items-outside-prd-scope.md`: detailed notes for excluded work only
 
 ## Update Triggers
 
@@ -107,6 +109,7 @@ Update this document when:
 - deployment defaults change
 - the auth boundary changes
 - validation evidence changes the practical risk of an existing finding
+- work moves into or out of the PRD scope
 
 ## Working Rules
 

@@ -1,17 +1,36 @@
 {
-  "version": "2.0",
-  "project_name": "OpenClaw Dashboard",
-  "description": "A lightweight web dashboard for viewing OpenClaw bots, agents, models, and sessions status at a glance.",
-  "current_phase": 0,
-  "current_session": null,
-  "monorepo": false,
-  "phases": {
-    "0": {
-      "name": "Foundation",
-      "status": "not_started",
-      "session_count": 0
-    }
-  },
-  "completed_sessions": [],
-  "next_session_history": []
+	"version": "2.0",
+	"project_name": "OpenClaw Dashboard",
+	"description": "A lightweight web dashboard for viewing OpenClaw bots, agents, models, and sessions status at a glance.",
+	"current_phase": 0,
+	"current_session": null,
+	"monorepo": false,
+	"phases": {
+		"0": {
+			"name": "Foundation",
+			"description": "Contain immediate exposure, establish secure defaults, and lock in the secure deployment model.",
+			"status": "not_started",
+			"session_count": 3
+		},
+		"1": {
+			"name": "Sensitive Route Hardening",
+			"description": "Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows.",
+			"status": "not_started",
+			"session_count": 3
+		},
+		"2": {
+			"name": "Runtime Boundary and Read Path Hardening",
+			"description": "Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load.",
+			"status": "not_started",
+			"session_count": 3
+		},
+		"3": {
+			"name": "Residual Risk Cleanup and Closeout",
+			"description": "Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings.",
+			"status": "not_started",
+			"session_count": 3
+		}
+	},
+	"completed_sessions": [],
+	"next_session_history": []
 }
