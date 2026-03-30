@@ -4,5 +4,9 @@ node_modules
 next-env.d.ts
 .idea
 .DS_Store
+.env
+.env.local
+.env.production.local
+.env.development.local
 /.openclaw
 /public/assets/pixel-office/*.mp3

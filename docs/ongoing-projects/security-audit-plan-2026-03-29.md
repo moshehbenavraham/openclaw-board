@@ -188,7 +188,7 @@ Key questions:
 - Attacker-controlled `sessionKey` and `agentId` accepted by `/api/test-session` without validation
 - Exploit chains documented: zero-click messaging abuse, credit exhaustion, and full reconnaissance + disable + flood (cross-chunk)
 
-### Chunk 5: Filesystem and Local Runtime Bridge Review
+### Chunk 5: Filesystem and Local Runtime Bridge Review -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -208,7 +208,20 @@ Key questions:
 - Are path selections trusted too broadly?
 - Could malicious local data or config shape trigger unsafe behavior?
 
-### Chunk 6: Heavy Parsers, Session Analytics, and DoS Risk
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-5-findings.md`
+
+**Key results:**
+
+- 9 confirmed findings (1 High, 5 Medium, 3 Low)
+- 3 suspected findings requiring dynamic validation
+- Bridge layer provides path constants but no path boundary enforcement -- structural root cause of F2.7 path traversal across 8+ routes
+- Windows cmd.exe code path has shell argument injection via insufficient `quoteShellArg` escaping (mitigated by Linux deployment)
+- `model-probe.ts` contains duplicate bridge implementations that diverge from canonical `openclaw-cli.ts` -- security fixes to one don't propagate
+- `parseJsonFromMixedOutput` returns the first JSON object found in CLI output, susceptible to output injection if attacker-controlled data appears before real response
+- Environment variables (`OPENCLAW_HOME`, `OPENCLAW_PACKAGE_DIR`, etc.) can redirect all filesystem operations with no validation
+- Positive: `execFile` used correctly on Linux, skill content access gated by enumerated list, JSONL scanning bounded to 5000 chars
+
+### Chunk 6: Heavy Parsers, Session Analytics, and DoS Risk -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -230,7 +243,19 @@ Key questions:
 - Are file reads bounded enough for hostile workloads?
 - Can malformed JSONL or oversized runtime state crash the process?
 
-### Chunk 7: Alerting and Internal Monitoring Flows
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-6-findings.md`
+
+**Key results:**
+
+- 9 confirmed findings (2 High, 3 Medium, 4 Low)
+- 3 suspected findings requiring dynamic validation
+- `/api/agent-activity` has no cache and performs cascading reads across 100+ files per request (sessions → subagent transcripts → cron transcripts)
+- Path traversal confirmed in `/api/stats/[agentId]` via unvalidated URL segment (cross-ref F2.7, F5.1)
+- All 7 endpoints perform unbounded filesystem scans without rate limiting; 4 of 7 use synchronous I/O that blocks the event loop
+- `resolveCronStorePath` follows arbitrary config-sourced paths -- combined with F3.1 becomes an arbitrary file read primitive
+- Exploit chains documented: sustained DoS via uncached endpoints, amplified DoS via session data growth, config tampering → file read via cron store path
+
+### Chunk 7: Alerting and Internal Monitoring Flows -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -248,7 +273,21 @@ Key questions:
 - Do they amplify secret exposure or internal probing?
 - Are alerting paths protected from abuse loops?
 
-### Chunk 8: Client-Side Propagation of Sensitive Data
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-7-findings.md`
+
+**Key results:**
+
+- 9 confirmed findings (3 High, 4 Medium, 2 Low)
+- 3 suspected findings requiring dynamic validation
+- Self-SSRF: `/api/alerts/check` internally calls `/api/test-model` for every configured model, creating a one-to-many amplification that consumes LLM provider API credits
+- Unauthenticated outbound messaging: alert notifications send real Feishu DMs using real `appId`/`appSecret` from config, triggered by any network caller
+- Gateway auth token injected into fire-and-forget messages to arbitrary agent sessions via attacker-controlled `receiveAgent`
+- `AlertMonitor` embedded in root layout triggers the full alert check pipeline on every page load by any visitor
+- `Math.random()`-based cron check sends real notifications with 40% probability per invocation
+- Gateway status component renders tokenized URL as clickable `<a>` tag in the DOM
+- Exploit chains documented: silent credit exhaustion via AlertMonitor amplification, notification flooding + session injection, full cross-chunk kill chain (6 unauthenticated requests)
+
+### Chunk 8: Client-Side Propagation of Sensitive Data -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -269,7 +308,21 @@ Key questions:
 - Are dangerous actions easy to trigger from a browser session?
 - Is any sensitive state stored persistently in `localStorage` or reflected into URLs?
 
-### Chunk 9: Secondary API Surface and Lower-Risk Routes
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-8-findings.md`
+
+**Key results:**
+
+- 10 confirmed findings (1 Critical, 3 High, 3 Medium, 3 Low)
+- 3 suspected findings requiring dynamic validation
+- Gateway auth token embedded in `<a href>` attributes across every agent card and session link on every page (DOM-visible, browser-history-persisted, referrer-leakable)
+- Gateway token also sent in POST body from browser to `/api/test-session` endpoint, redundantly round-tripping the secret through the client
+- Full config (including token) cached in module-scope JavaScript variables that survive SPA navigation
+- One-click model change and four test-all buttons perform admin/side-effect actions with no auth, no confirmation dialog
+- Five `localStorage` keys accumulate test results indefinitely with no expiry, size bounds, or cleanup
+- Platform identifiers (Feishu accountId, botOpenId, botUserId), session key naming conventions, and OpenClaw version rendered in DOM for reconnaissance
+- Exploit chains documented: DOM token extraction, browser history token persistence, full admin takeover via 5 clicks + 1 API call, cross-page data leakage via localStorage
+
+### Chunk 9: Secondary API Surface and Lower-Risk Routes -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -289,7 +342,20 @@ Key questions:
 - Are there smaller routes that still expose metadata or create network side effects?
 - Are response shapes consistent with the app's trust model?
 
-### Chunk 10: Dynamic Verification
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-9-findings.md`
+
+**Key results:**
+
+- 9 confirmed findings (0 Critical, 0 High, 4 Medium, 5 Low)
+- 3 suspected findings requiring dynamic validation
+- Agent status endpoint discloses all agent IDs, activity states, and timestamps enabling attack timing optimization
+- `execSync` shell invocation in contributions endpoint (only `execSync` usage in the codebase; rest uses `execFile`)
+- GitHub API rate limit exhaustible via `?force=1` cache bypass on version endpoint with no rate limiting
+- Skill listing re-exposes absolute filesystem paths (cross-ref F2.4, F5.3) -- `/api/skills` is the direct entry point
+- GitHub username and contribution patterns disclosed, revealing operator identity
+- All 25 API route files now covered across Chunks 2-9; audit proceeds to dynamic verification
+
+### Chunk 10: Dynamic Verification -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -310,7 +376,21 @@ Requirements:
 - No production credentials
 - Permission to run the app and hit local endpoints
 
-### Chunk 11: Synthesis and Remediation Plan
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-10-findings.md`
+
+**Key results:**
+
+- 11 dynamically confirmed findings (2 Critical, 5 High, 3 Medium, 1 Low)
+- 12 code-confirmed findings (not dynamically tested to avoid side effects)
+- 1 new finding discovered: zero security response headers (no Referrer-Policy, X-Frame-Options, CSP, HSTS)
+- 4 suspected findings downgraded: file descriptor exhaustion (ulimit=1M), memory exhaustion (heap=4.3GB), symlink traversal (none found), shell startup interference (clean)
+- All 27 suspected findings from Chunks 1-9 resolved
+- 3 exploit chains validated: full recon→disable→flood, CSRF silent config manipulation, zero-click messaging via `<img>` tags
+- Gateway token confirmed exposed in plaintext via 2 unauthenticated endpoints
+- CSRF mutation confirmed: cross-origin POST from `http://evil.com` successfully wrote to filesystem
+- Path traversal confirmed: `[agentId]` segment traverses out of `.openclaw/agents/` to filesystem root
+
+### Chunk 11: Synthesis and Remediation Plan -- COMPLETED 2026-03-30
 
 Purpose:
 
@@ -325,6 +405,18 @@ Outputs:
 - Findings list with severity, impact, exploit path, and file references
 - Fix priority ordering
 - Validation checklist after fixes
+
+**Findings:** See `docs/ongoing-projects/security-audit-chunk-11-findings.md`
+
+**Key results:**
+
+- 97 raw findings across Chunks 1-10 deduplicated to 35 unique findings (5 Critical, 8 High, 12 Medium, 10 Low)
+- 27 of 27 suspected findings resolved (4 downgraded, 12 code-confirmed, 11 dynamically confirmed)
+- 3 validated exploit chains: full recon→disable→flood, CSRF silent mutation, zero-click messaging via `<img>` tags
+- Root cause: zero authentication middleware — adding auth (R-01) alone mitigates 30+ findings
+- 39 remediation items organized into 4 phases: Emergency (5 fixes, 1-2 days), Urgent (7 fixes, 3-5 days), Short-Term (13 fixes, 5-8 days), Hardening (14 fixes, 3-5 days)
+- Post-fix validation checklist with 25 concrete test assertions across all 4 phases
+- Gateway auth token confirmed leaking through 6 independent paths — all addressed in Phase 0 and Phase 1 fixes
 
 ## Prerequisites for a Full Audit
 
