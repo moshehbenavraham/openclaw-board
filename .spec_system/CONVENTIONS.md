@@ -81,6 +81,18 @@
 - Add a dependency only when it materially reduces security or maintenance risk.
 - Keep `package-lock.json` authoritative for installs and CI reproducibility.
 
+## CI/CD
+
+Platform: GitHub Actions
+
+| Bundle | Status | Workflow |
+|--------|--------|----------|
+| Code Quality | configured | .github/workflows/quality.yml |
+| Build & Test | not configured | - |
+| Security | not configured | - |
+| Integration | not configured | - |
+| Operations | not configured | - |
+
 ## Local Dev Tools
 
 | Category | Tool | Config |
