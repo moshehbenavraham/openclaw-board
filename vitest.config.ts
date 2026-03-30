@@ -7,7 +7,7 @@ export default defineConfig({
 	test: {
 		environment: "jsdom",
 		include: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
-		exclude: ["node_modules", ".next"],
+		exclude: ["node_modules", ".next", "tests/**/*"],
 	},
 	resolve: {
 		alias: {
