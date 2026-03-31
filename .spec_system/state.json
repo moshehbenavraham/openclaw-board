@@ -139,6 +139,16 @@
 			"date": "2026-03-31",
 			"session": "phase03-session02-client-and-operational-cleanup",
 			"status": "completed"
+		},
+		{
+			"date": "2026-03-31",
+			"session": "phase03-session03-verification-and-closeout",
+			"status": "planned"
+		},
+		{
+			"date": "2026-03-31",
+			"session": "phase03-session03-verification-and-closeout",
+			"status": "completed"
 		}
 	]
 }

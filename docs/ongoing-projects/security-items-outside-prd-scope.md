@@ -21,3 +21,4 @@ The in-scope audit backlog, phase mapping, and validation gates now live in `.sp
 
 - Historical security audit chunk files were consolidated into `.spec_system/PRD/PRD.md` on 2026-03-31.
 - If future work is not represented in Appendix A or Appendix B of the PRD, it belongs here until the PRD is explicitly expanded.
+- Closeout review on 2026-03-31 found no additional outside-PRD security items; the current list remains accurate.

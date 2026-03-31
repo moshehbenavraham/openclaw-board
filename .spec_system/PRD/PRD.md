@@ -29,7 +29,7 @@ This project completes in four phases and twelve implementation sessions. Each s
 | 00 | Foundation | 3 | Contain immediate exposure, establish secure defaults, and lock in the secure deployment model. | Complete |
 | 01 | Sensitive Route Hardening | 3 | Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows. | Complete |
 | 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | Complete |
-| 03 | Residual Risk Cleanup and Closeout | 3 | Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings. | In Progress |
+| 03 | Residual Risk Cleanup and Closeout | 3 | Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings. | Complete |
 
 ### Phase 00: Foundation
 
@@ -83,9 +83,9 @@ This project completes in four phases and twelve implementation sessions. Each s
 
 | Session | Name | Clear Objective | Est. Tasks | Status |
 |---------|------|-----------------|------------|--------|
-| 03-01 | State, cache, and environment hardening | Make sensitive writes atomic, return safe cache copies, validate startup environment assumptions, and close remaining low-level runtime hazards. | ~12-18 | Not Started |
-| 03-02 | Client and operational cleanup | Bound local storage, remove risky logging and fallback behaviors, add destructive-action confirmations, deduplicate recurring client-side monitors, and trim residual reconnaissance leaks. | ~12-18 | Not Started |
-| 03-03 | Verification and closeout | Run the final validation matrix, reconcile findings and docs, and record any accepted or deferred residual risks with rationale. | ~15-20 | Not Started |
+| 03-01 | State, cache, and environment hardening | Make sensitive writes atomic, return safe cache copies, validate startup environment assumptions, and close remaining low-level runtime hazards. | ~12-18 | Complete |
+| 03-02 | Client and operational cleanup | Bound local storage, remove risky logging and fallback behaviors, add destructive-action confirmations, deduplicate recurring client-side monitors, and trim residual reconnaissance leaks. | ~12-18 | Complete |
+| 03-03 | Verification and closeout | Run the final validation matrix, reconcile findings and docs, and record any accepted or deferred residual risks with rationale. | ~15-20 | Complete |
 
 ## Goals
 
