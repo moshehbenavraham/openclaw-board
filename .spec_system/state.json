@@ -40,7 +40,8 @@
 		"phase01-session03-abuse-resistance-and-deterministic-diagnostics",
 		"phase02-session01-payload-validation-and-write-path-safety",
 		"phase02-session02-runtime-bridge-consolidation-and-safe-parsing",
-		"phase02-session03-async-cached-sanitized-read-paths"
+		"phase02-session03-async-cached-sanitized-read-paths",
+		"phase03-session01-state-cache-and-environment-hardening"
 	],
 	"next_session_history": [
 		{
