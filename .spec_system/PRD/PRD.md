@@ -26,8 +26,8 @@ This project completes in four phases and twelve implementation sessions. Each s
 
 | Phase | Name | Sessions | Objective | Status |
 |-------|------|----------|-----------|--------|
-| 00 | Foundation | 3 | Contain immediate exposure, establish secure defaults, and lock in the secure deployment model. | Not Started |
-| 01 | Sensitive Route Hardening | 3 | Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows. | Not Started |
+| 00 | Foundation | 3 | Contain immediate exposure, establish secure defaults, and lock in the secure deployment model. | Complete |
+| 01 | Sensitive Route Hardening | 3 | Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows. | In Progress |
 | 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | Not Started |
 | 03 | Residual Risk Cleanup and Closeout | 3 | Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings. | Not Started |
 
@@ -41,9 +41,9 @@ This project completes in four phases and twelve implementation sessions. Each s
 
 | Session | Name | Clear Objective | Est. Tasks | Status |
 |---------|------|-----------------|------------|--------|
-| 00-01 | Auth and operator elevation foundation | Introduce the app-side sensitive-route auth baseline, operator code challenge, signed elevated-session cookie scaffolding, and shared route guards. | ~15-20 | Not Started |
-| 00-02 | Secret containment and token-free operator flows | Remove `gateway.token` leakage from API responses, DOM links, and client request payloads, replace browser token usage with server-side flows, and redact browser-unneeded sensitive metadata. | ~15-20 | Not Started |
-| 00-03 | Safe defaults and deployment baseline | Disable side effects by default, remove `GET` side-effect aliases, and align root env plus deployment docs around loopback and Cloudflare Access defaults. | ~12-18 | Not Started |
+| 00-01 | Auth and operator elevation foundation | Introduce the app-side sensitive-route auth baseline, operator code challenge, signed elevated-session cookie scaffolding, and shared route guards. | ~15-20 | Complete |
+| 00-02 | Secret containment and token-free operator flows | Remove `gateway.token` leakage from API responses, DOM links, and client request payloads, replace browser token usage with server-side flows, and redact browser-unneeded sensitive metadata. | ~15-20 | Complete |
+| 00-03 | Safe defaults and deployment baseline | Disable side effects by default, remove `GET` side-effect aliases, and align root env plus deployment docs around loopback and Cloudflare Access defaults. | ~12-18 | Complete |
 
 ### Phase 01: Sensitive Route Hardening
 
@@ -55,7 +55,7 @@ This project completes in four phases and twelve implementation sessions. Each s
 
 | Session | Name | Clear Objective | Est. Tasks | Status |
 |---------|------|-----------------|------------|--------|
-| 01-01 | Route boundary validation | Centralize agent and cron path validation plus shared request-guard utilities for sensitive API routes. | ~12-18 | Not Started |
+| 01-01 | Route boundary validation | Centralize agent and cron path validation plus shared request-guard utilities for sensitive API routes. | ~12-18 | Complete |
 | 01-02 | Sensitive route enforcement and operator failure states | Apply non-GET enforcement, origin checks, attacker-input validation, and clear operator-facing denial states across write and side-effect endpoints. | ~12-18 | Not Started |
 | 01-03 | Abuse resistance and deterministic diagnostics | Add rate limits and security headers, remove alert self-SSRF and random cron placeholders, and keep live-send diagnostics explicit opt-in. | ~15-20 | Not Started |
 
