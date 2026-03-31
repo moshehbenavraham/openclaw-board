@@ -1,4 +1,7 @@
-import { execOpenclaw, parseJsonFromMixedOutput } from "@/lib/openclaw-cli";
+import {
+	execOpenclaw,
+	parseRequiredOpenclawJsonOutput,
+} from "@/lib/openclaw-cli";
 
 function extractCliReply(parsed: any, stdout: string): string {
 	const candidates = [
@@ -41,7 +44,11 @@ export async function testSessionViaCli(
 			"100",
 		]);
 		const elapsed = Date.now() - startTime;
-		const parsed = parseJsonFromMixedOutput(`${stdout}\n${stderr || ""}`);
+		const parsed = parseRequiredOpenclawJsonOutput(
+			stdout,
+			stderr || "",
+			"CLI fallback returned malformed OpenClaw output",
+		);
 		const error = parsed?.error?.message || parsed?.error;
 		if (typeof error === "string" && error.trim()) {
 			return { ok: false, error: error.trim().slice(0, 300), elapsed };

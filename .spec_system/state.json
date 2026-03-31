@@ -37,7 +37,9 @@
 		"phase00-session03-safe-defaults-and-deployment-baseline",
 		"phase01-session01-route-boundary-validation",
 		"phase01-session02-sensitive-route-enforcement-and-operator-failure-states",
-		"phase01-session03-abuse-resistance-and-deterministic-diagnostics"
+		"phase01-session03-abuse-resistance-and-deterministic-diagnostics",
+		"phase02-session01-payload-validation-and-write-path-safety",
+		"phase02-session02-runtime-bridge-consolidation-and-safe-parsing"
 	],
 	"next_session_history": [
 		{
@@ -88,6 +90,16 @@
 		{
 			"date": "2026-03-31",
 			"session": "phase02-session01-payload-validation-and-write-path-safety",
+			"status": "completed"
+		},
+		{
+			"date": "2026-03-31",
+			"session": "phase02-session02-runtime-bridge-consolidation-and-safe-parsing",
+			"status": "planned"
+		},
+		{
+			"date": "2026-03-31",
+			"session": "phase02-session02-runtime-bridge-consolidation-and-safe-parsing",
 			"status": "completed"
 		}
 	]

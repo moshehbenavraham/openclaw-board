@@ -3,7 +3,7 @@
 **Status**: In Progress
 **Sessions**: 3 (initial estimate)
 **Estimated Duration**: 2-4 days
-**Progress**: 1/3 sessions (33%)
+**Progress**: 2/3 sessions (67%)
 
 ---
 
@@ -27,7 +27,7 @@ SYN-26, SYN-31, SYN-33, and SYN-35.
 | Session | Name | Status | Est. Tasks | Validated |
 |---------|------|--------|------------|-----------|
 | 01 | Payload validation and write-path safety | Complete | ~15-20 | 2026-03-31 |
-| 02 | Runtime bridge consolidation and safe parsing | Not Started | ~12-18 | - |
+| 02 | Runtime bridge consolidation and safe parsing | Complete | ~12-18 | 2026-03-31 |
 | 03 | Async, cached, sanitized read paths | Not Started | ~15-20 | - |
 
 ---
@@ -35,12 +35,13 @@ SYN-26, SYN-31, SYN-33, and SYN-35.
 ## Completed Sessions
 
 - Session 01: Payload validation and write-path safety
+- Session 02: Runtime bridge consolidation and safe parsing
 
 ---
 
 ## Upcoming Sessions
 
-- Session 02: Runtime bridge consolidation and safe parsing
+- Session 03: Async, cached, sanitized read paths
 
 ---
 

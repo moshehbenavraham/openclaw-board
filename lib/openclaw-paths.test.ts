@@ -6,9 +6,13 @@ import {
 	getOpenclawPackageCandidates,
 	isPathWithinBoundary,
 	isValidOpenclawAgentId,
+	resolveOpenclawAgentConfigDir,
+	resolveOpenclawAgentModelsFile,
 	resolveOpenclawAgentSessionsDir,
 	resolveOpenclawAgentSessionsFile,
+	resolveOpenclawConfigFile,
 	resolveOpenclawCronStorePath,
+	resolveOpenclawRuntimePath,
 } from "@/lib/openclaw-paths";
 
 describe("getOpenclawPackageCandidates", () => {
@@ -67,6 +71,40 @@ describe("openclaw path boundaries", () => {
 		expect(
 			resolveOpenclawAgentSessionsFile("../main", openclawHome),
 		).toBeNull();
+	});
+
+	it("resolves runtime config and models files through the approved boundary", () => {
+		const openclawHome = "/tmp/openclaw-home";
+		expect(resolveOpenclawConfigFile(openclawHome)).toBe(
+			path.resolve(openclawHome, "openclaw.json"),
+		);
+		expect(resolveOpenclawAgentConfigDir("main", openclawHome)).toBe(
+			path.resolve(openclawHome, "agents", "main", "agent"),
+		);
+		expect(resolveOpenclawAgentModelsFile("main", openclawHome)).toBe(
+			path.resolve(openclawHome, "agents", "main", "agent", "models.json"),
+		);
+	});
+
+	it("rejects runtime paths that escape the OpenClaw home boundary", () => {
+		const openclawHome = "/tmp/openclaw-home";
+		expect(resolveOpenclawRuntimePath(openclawHome, "..", "secrets.txt")).toBe(
+			null,
+		);
+		expect(
+			resolveOpenclawRuntimePath(
+				openclawHome,
+				"agents",
+				"main",
+				"agent",
+				"..",
+				"..",
+				"..",
+				"..",
+				"secrets.txt",
+			),
+		).toBeNull();
+		expect(resolveOpenclawAgentModelsFile("../main", openclawHome)).toBeNull();
 	});
 
 	it("checks whether a path stays inside its approved boundary", () => {

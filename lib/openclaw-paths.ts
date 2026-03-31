@@ -81,6 +81,38 @@ export function resolveOpenclawAgentSessionsFile(
 		: null;
 }
 
+export function resolveOpenclawRuntimePath(
+	openclawHome = OPENCLAW_HOME,
+	...segments: string[]
+): string | null {
+	const normalizedHome = normalizeAbsolutePath(openclawHome);
+	return resolveWithinBoundary(normalizedHome, ...segments);
+}
+
+export function resolveOpenclawConfigFile(
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	return resolveOpenclawRuntimePath(openclawHome, "openclaw.json");
+}
+
+export function resolveOpenclawAgentConfigDir(
+	agentId: string,
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	const agentDir = resolveOpenclawAgentDir(agentId, openclawHome);
+	return agentDir ? resolveWithinBoundary(agentDir, "agent") : null;
+}
+
+export function resolveOpenclawAgentModelsFile(
+	agentId: string,
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	const agentConfigDir = resolveOpenclawAgentConfigDir(agentId, openclawHome);
+	return agentConfigDir
+		? resolveWithinBoundary(agentConfigDir, "models.json")
+		: null;
+}
+
 export function getOpenclawCronStoreBoundaries(
 	openclawHome = OPENCLAW_HOME,
 ): string[] {

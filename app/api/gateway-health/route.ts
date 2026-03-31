@@ -1,111 +1,62 @@
-import { exec, execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { buildGatewayHomeLaunchPath } from "@/lib/gateway-launch";
 import { readJsonFileSync } from "@/lib/json";
-import { OPENCLAW_CONFIG_PATH } from "@/lib/openclaw-paths";
+import {
+	getOpenclawVersion as fetchOpenclawVersion,
+	probeOpenclawGatewayStatus,
+} from "@/lib/openclaw-cli";
+import { resolveOpenclawConfigFile } from "@/lib/openclaw-paths";
 
-const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
+const DEFAULT_GATEWAY_PORT = 18789;
 const DEGRADED_LATENCY_MS = 1500;
-const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
+const HEALTH_PROBE_TIMEOUT_MS = 5000;
+
+interface GatewayRuntimeConfig {
+	port: number;
+	token: string;
+}
+
 let cachedOpenclawVersion: { value: string | null; expiresAt: number } | null =
 	null;
 
-function quoteShellArg(arg: string): string {
-	if (/^[A-Za-z0-9_./:=@-]+$/.test(arg)) return arg;
-	return `"${arg.replace(/"/g, '""')}"`;
-}
-
-async function execOpenclaw(
-	args: string[],
-): Promise<{ stdout: string; stderr: string }> {
-	const env = { ...process.env, FORCE_COLOR: "0" };
-
-	if (process.platform !== "win32") {
-		return execFileAsync("openclaw", args, {
-			maxBuffer: 10 * 1024 * 1024,
-			env,
-		});
+function loadGatewayRuntimeConfig(): GatewayRuntimeConfig {
+	const configPath = resolveOpenclawConfigFile();
+	if (!configPath) {
+		throw new Error("OpenClaw runtime config path is invalid");
 	}
 
-	const command = `openclaw ${args.map(quoteShellArg).join(" ")}`;
-	return execAsync(command, {
-		maxBuffer: 10 * 1024 * 1024,
-		env,
-		shell: "cmd.exe",
-	});
+	const config = readJsonFileSync<any>(configPath);
+	return {
+		port:
+			typeof config.gateway?.port === "number"
+				? config.gateway.port
+				: DEFAULT_GATEWAY_PORT,
+		token:
+			typeof config.gateway?.auth?.token === "string"
+				? config.gateway.auth.token
+				: "",
+	};
 }
 
-function parseJsonFromMixedOutput(output: string): any {
-	for (let i = 0; i < output.length; i++) {
-		if (output[i] !== "{") continue;
-		let depth = 0;
-		let inString = false;
-		let escaped = false;
-		for (let j = i; j < output.length; j++) {
-			const ch = output[j];
-			if (inString) {
-				if (escaped) escaped = false;
-				else if (ch === "\\") escaped = true;
-				else if (ch === '"') inString = false;
-				continue;
-			}
-			if (ch === '"') {
-				inString = true;
-				continue;
-			}
-			if (ch === "{") depth++;
-			else if (ch === "}") {
-				depth--;
-				if (depth === 0) {
-					const candidate = output.slice(i, j + 1).trim();
-					try {
-						return JSON.parse(candidate);
-					} catch {
-						break;
-					}
-				}
-			}
-		}
-	}
-	throw new Error("Failed to parse JSON from openclaw gateway status output");
-}
+function normalizeGatewayProbeError(error: unknown): string {
+	const err = error as {
+		cause?: { code?: string };
+		name?: string;
+	};
 
-async function probeGatewayViaCli(
-	token: string,
-	timeoutMs = 5000,
-): Promise<{ ok: boolean; error?: string }> {
-	try {
-		const args = [
-			"gateway",
-			"status",
-			"--json",
-			"--timeout",
-			String(timeoutMs),
-		];
-		if (token) args.push("--token", token);
-		const { stdout, stderr } = await execOpenclaw(args);
-		const parsed = parseJsonFromMixedOutput(`${stdout}\n${stderr || ""}`);
-		const ok = parsed?.rpc?.ok === true;
-		const error =
-			typeof parsed?.rpc?.error === "string" && parsed.rpc.error.trim()
-				? parsed.rpc.error.trim()
-				: undefined;
-		return { ok, error };
-	} catch (err: unknown) {
-		const message =
-			err instanceof Error
-				? err.message
-				: "Failed to run openclaw gateway status";
-		return { ok: false, error: message };
+	if (err?.cause?.code === "ECONNREFUSED") {
+		return "Gateway is not running";
 	}
+	if (err?.name === "AbortError") {
+		return "Request timed out";
+	}
+	return "Gateway health probe failed";
 }
 
 async function probeGatewayViaWeb(
 	port: number,
 	token: string,
-	timeoutMs = 5000,
+	timeoutMs = HEALTH_PROBE_TIMEOUT_MS,
 ): Promise<{ ok: boolean; error?: string }> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -117,11 +68,13 @@ async function probeGatewayViaWeb(
 		return resp.status >= 200 && resp.status < 400
 			? { ok: true }
 			: { ok: false, error: `HTTP ${resp.status}` };
-	} catch (err: unknown) {
+	} catch (error: unknown) {
 		return {
 			ok: false,
 			error:
-				err instanceof Error ? err.message : "Failed to probe gateway web UI",
+				error instanceof Error
+					? error.message
+					: "Failed to probe gateway web UI",
 		};
 	} finally {
 		clearTimeout(timeout);
@@ -133,32 +86,38 @@ async function getOpenclawVersion(): Promise<string | undefined> {
 	if (cachedOpenclawVersion && cachedOpenclawVersion.expiresAt > now) {
 		return cachedOpenclawVersion.value || undefined;
 	}
-	try {
-		const { stdout } = await execOpenclaw(["--version"]);
-		const version = stdout.trim().split(/\s+/)[0] || null;
-		cachedOpenclawVersion = { value: version, expiresAt: now + 60 * 60 * 1000 };
-		return version || undefined;
-	} catch {
-		cachedOpenclawVersion = { value: null, expiresAt: now + 60 * 1000 };
-		return undefined;
-	}
+
+	const version = await fetchOpenclawVersion();
+	cachedOpenclawVersion = {
+		value: version || null,
+		expiresAt: now + (version ? 60 * 60 * 1000 : 60 * 1000),
+	};
+	return version;
 }
 
 export async function GET() {
 	const startedAt = Date.now();
 	const launchPath = buildGatewayHomeLaunchPath();
+	let runtimeConfig: GatewayRuntimeConfig = {
+		port: DEFAULT_GATEWAY_PORT,
+		token: "",
+	};
+
 	try {
 		const openclawVersion = await getOpenclawVersion();
-		const config = readJsonFileSync<any>(CONFIG_PATH);
-		const port = config.gateway?.port || 18789;
-		const token = config.gateway?.auth?.token || "";
+		runtimeConfig = loadGatewayRuntimeConfig();
 
-		const url = `http://localhost:${port}/api/health`;
+		const url = `http://localhost:${runtimeConfig.port}/api/health`;
 		const headers: Record<string, string> = {};
-		if (token) headers.Authorization = `Bearer ${token}`;
+		if (runtimeConfig.token) {
+			headers.Authorization = `Bearer ${runtimeConfig.token}`;
+		}
 
 		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 5000);
+		const timeout = setTimeout(
+			() => controller.abort(),
+			HEALTH_PROBE_TIMEOUT_MS,
+		);
 
 		const resp = await fetch(url, {
 			headers,
@@ -166,6 +125,7 @@ export async function GET() {
 			cache: "no-store",
 		});
 		clearTimeout(timeout);
+
 		if (resp.ok) {
 			const checkedAt = Date.now();
 			const responseMs = checkedAt - startedAt;
@@ -181,7 +141,10 @@ export async function GET() {
 			});
 		}
 
-		const web = await probeGatewayViaWeb(port, token, 5000);
+		const web = await probeGatewayViaWeb(
+			runtimeConfig.port,
+			runtimeConfig.token,
+		);
 		if (web.ok) {
 			const checkedAt = Date.now();
 			const responseMs = checkedAt - startedAt;
@@ -196,8 +159,10 @@ export async function GET() {
 			});
 		}
 
-		// OpenClaw 2026.3.x no longer serves /api/health; fallback to CLI probe.
-		const cli = await probeGatewayViaCli(token, 5000);
+		const cli = await probeOpenclawGatewayStatus(
+			runtimeConfig.token,
+			HEALTH_PROBE_TIMEOUT_MS,
+		);
 		const checkedAt = Date.now();
 		const responseMs = checkedAt - startedAt;
 		if (cli.ok) {
@@ -220,37 +185,12 @@ export async function GET() {
 			checkedAt,
 			responseMs,
 		});
-	} catch (err: unknown) {
+	} catch (error: unknown) {
 		const openclawVersion = await getOpenclawVersion();
-		// If HTTP probe fails due transport/runtime issues, attempt CLI probe before declaring down.
-		const errObj = err as {
-			cause?: { code?: string };
-			name?: string;
-			message?: string;
-		};
-		const raw =
-			errObj.cause?.code === "ECONNREFUSED"
-				? "Gateway is not running"
-				: errObj.name === "AbortError"
-					? "Request timed out"
-					: errObj.message || String(err);
-		const token = (() => {
-			try {
-				const cfg = readJsonFileSync<any>(CONFIG_PATH);
-				return cfg.gateway?.auth?.token || "";
-			} catch {
-				return "";
-			}
-		})();
-		const port = (() => {
-			try {
-				const cfg = readJsonFileSync<any>(CONFIG_PATH);
-				return cfg.gateway?.port || 18789;
-			} catch {
-				return 18789;
-			}
-		})();
-		const web = await probeGatewayViaWeb(port, token, 5000);
+		const web = await probeGatewayViaWeb(
+			runtimeConfig.port,
+			runtimeConfig.token,
+		);
 		if (web.ok) {
 			const checkedAt = Date.now();
 			const responseMs = checkedAt - startedAt;
@@ -264,7 +204,11 @@ export async function GET() {
 				launchPath,
 			});
 		}
-		const cli = await probeGatewayViaCli(token, 5000);
+
+		const cli = await probeOpenclawGatewayStatus(
+			runtimeConfig.token,
+			HEALTH_PROBE_TIMEOUT_MS,
+		);
 		const checkedAt = Date.now();
 		const responseMs = checkedAt - startedAt;
 		if (cli.ok) {
@@ -278,10 +222,11 @@ export async function GET() {
 				launchPath,
 			});
 		}
+
 		return NextResponse.json({
 			ok: false,
 			openclawVersion,
-			error: cli.error || raw,
+			error: cli.error || normalizeGatewayProbeError(error),
 			status: "down",
 			checkedAt,
 			responseMs,

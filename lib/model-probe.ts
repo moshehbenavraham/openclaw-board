@@ -1,13 +1,11 @@
-import { exec, execFile } from "node:child_process";
 import dns from "node:dns/promises";
 import net from "node:net";
-import path from "node:path";
-import { promisify } from "node:util";
 import { readJsonFileSync } from "@/lib/json";
-import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
-
-const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
+import {
+	probeOpenclawProviderStatus,
+	sanitizeOpenclawError,
+} from "@/lib/openclaw-cli";
+import { resolveOpenclawAgentModelsFile } from "@/lib/openclaw-paths";
 
 export const DEFAULT_MODEL_PROBE_TIMEOUT_MS = 15000;
 const DIRECT_PROBE_RETRY_DELAYS_MS = [250];
@@ -60,83 +58,28 @@ interface ProbeModelParams {
 	timeoutMs?: number;
 }
 
-const MODELS_PATH = path.join(
-	OPENCLAW_HOME,
-	"agents",
-	"main",
-	"agent",
-	"models.json",
-);
-
-function quoteShellArg(arg: string): string {
-	if (/^[A-Za-z0-9_./:=@-]+$/.test(arg)) return arg;
-	return `"${arg.replace(/"/g, '""')}"`;
-}
-
-async function execOpenclaw(
-	args: string[],
-): Promise<{ stdout: string; stderr: string }> {
-	const env = { ...process.env, FORCE_COLOR: "0" };
-
-	if (process.platform !== "win32") {
-		return execFileAsync("openclaw", args, {
-			maxBuffer: 10 * 1024 * 1024,
-			env,
-		});
+function loadProviderConfig(providerId: string): {
+	providerConfig: ProviderConfig | null;
+	error?: string;
+} {
+	const modelsPath = resolveOpenclawAgentModelsFile("main");
+	if (!modelsPath) {
+		return {
+			providerConfig: null,
+			error: "OpenClaw runtime models path is invalid",
+		};
 	}
 
-	const command = `openclaw ${args.map(quoteShellArg).join(" ")}`;
-	return execAsync(command, {
-		maxBuffer: 10 * 1024 * 1024,
-		env,
-		shell: "cmd.exe",
-	});
-}
-
-function parseJsonFromMixedOutput(output: string): any {
-	for (let i = 0; i < output.length; i++) {
-		if (output[i] !== "{") continue;
-		let depth = 0;
-		let inString = false;
-		let escaped = false;
-		for (let j = i; j < output.length; j++) {
-			const ch = output[j];
-			if (inString) {
-				if (escaped) escaped = false;
-				else if (ch === "\\") escaped = true;
-				else if (ch === '"') inString = false;
-				continue;
-			}
-			if (ch === '"') {
-				inString = true;
-				continue;
-			}
-			if (ch === "{") depth++;
-			else if (ch === "}") {
-				depth--;
-				if (depth === 0) {
-					const candidate = output.slice(i, j + 1).trim();
-					try {
-						const parsed = JSON.parse(candidate);
-						if (parsed && typeof parsed === "object") return parsed;
-					} catch {}
-					break;
-				}
-			}
-		}
-	}
-	throw new Error(
-		"Failed to parse JSON output from openclaw models status --probe --json",
-	);
-}
-
-function loadProviderConfig(providerId: string): ProviderConfig | null {
 	try {
-		const parsed = readJsonFileSync<any>(MODELS_PATH);
+		const parsed = readJsonFileSync<any>(modelsPath);
 		const providers = parsed?.providers;
-		if (!providers || typeof providers !== "object") return null;
+		if (!providers || typeof providers !== "object") {
+			return { providerConfig: null };
+		}
 		const exact = providers[providerId];
-		if (exact && typeof exact === "object") return exact as ProviderConfig;
+		if (exact && typeof exact === "object") {
+			return { providerConfig: exact as ProviderConfig };
+		}
 		const normalizedTarget = providerId.toLowerCase();
 		for (const [key, value] of Object.entries(providers)) {
 			if (
@@ -144,12 +87,12 @@ function loadProviderConfig(providerId: string): ProviderConfig | null {
 				value &&
 				typeof value === "object"
 			) {
-				return value as ProviderConfig;
+				return { providerConfig: value as ProviderConfig };
 			}
 		}
-		return null;
+		return { providerConfig: null };
 	} catch {
-		return null;
+		return { providerConfig: null };
 	}
 }
 
@@ -342,12 +285,20 @@ function extractErrorMessage(payload: any, fallback: string): string {
 
 async function probeModelDirect(
 	params: ProbeModelParams,
-): Promise<DirectProbeResult | null> {
-	const providerCfg = loadProviderConfig(params.providerId);
-	if (!providerCfg?.baseUrl || !providerCfg.api || !providerCfg.apiKey)
-		return null;
-	const safeBaseUrl = await resolveSafeBaseUrl(providerCfg.baseUrl);
-	if (!safeBaseUrl) return null;
+): Promise<{ result: DirectProbeResult | null; error?: string }> {
+	const { providerConfig, error } = loadProviderConfig(params.providerId);
+	if (error) {
+		return { result: null, error };
+	}
+	if (
+		!providerConfig?.baseUrl ||
+		!providerConfig.api ||
+		!providerConfig.apiKey
+	) {
+		return { result: null };
+	}
+	const safeBaseUrl = await resolveSafeBaseUrl(providerConfig.baseUrl);
+	if (!safeBaseUrl) return { result: null };
 
 	const timeoutMs = params.timeoutMs ?? DEFAULT_MODEL_PROBE_TIMEOUT_MS;
 	// Kimi providers require temperature=1
@@ -357,11 +308,11 @@ async function probeModelDirect(
 
 	const headers: Record<string, string> = {
 		"content-type": "application/json",
-		...(providerCfg.headers || {}),
-		...pickAuthHeader(providerCfg, providerCfg.apiKey),
+		...(providerConfig.headers || {}),
+		...pickAuthHeader(providerConfig, providerConfig.apiKey),
 	};
 
-	if (providerCfg.api === "anthropic-messages") {
+	if (providerConfig.api === "anthropic-messages") {
 		if (!headers["anthropic-version"])
 			headers["anthropic-version"] = "2023-06-01";
 		const url = `${safeBaseUrl}/v1/messages`;
@@ -381,13 +332,15 @@ async function probeModelDirect(
 			const elapsed = Date.now() - start;
 			if (resp.ok) {
 				return {
-					ok: true,
-					elapsed,
-					status: "ok",
-					mode: "api_key",
-					source: "direct_model_probe",
-					precision: "model",
-					text: "OK (direct model probe)",
+					result: {
+						ok: true,
+						elapsed,
+						status: "ok",
+						mode: "api_key",
+						source: "direct_model_probe",
+						precision: "model",
+						text: "OK (direct model probe)",
+					},
 				};
 			}
 			let payload: any = null;
@@ -396,32 +349,36 @@ async function probeModelDirect(
 			} catch {}
 			const error = extractErrorMessage(payload, `HTTP ${resp.status}`);
 			return {
-				ok: false,
-				elapsed,
-				status: classifyErrorStatus(resp.status, error),
-				error,
-				mode: "api_key",
-				source: "direct_model_probe",
-				precision: "model",
+				result: {
+					ok: false,
+					elapsed,
+					status: classifyErrorStatus(resp.status, error),
+					error,
+					mode: "api_key",
+					source: "direct_model_probe",
+					precision: "model",
+				},
 			};
 		} catch (err: any) {
 			const elapsed = Date.now() - start;
 			const isTimeout = err?.name === "AbortError";
 			return {
-				ok: false,
-				elapsed,
-				status: isTimeout ? "timeout" : "network",
-				error: isTimeout
-					? "LLM request timed out."
-					: err?.message || "Network error",
-				mode: "api_key",
-				source: "direct_model_probe",
-				precision: "model",
+				result: {
+					ok: false,
+					elapsed,
+					status: isTimeout ? "timeout" : "network",
+					error: isTimeout
+						? "LLM request timed out."
+						: err?.message || "Network error",
+					mode: "api_key",
+					source: "direct_model_probe",
+					precision: "model",
+				},
 			};
 		}
 	}
 
-	if (providerCfg.api === "openai-completions") {
+	if (providerConfig.api === "openai-completions") {
 		const url = `${safeBaseUrl}/chat/completions`;
 		const body = {
 			model: params.modelId,
@@ -439,13 +396,15 @@ async function probeModelDirect(
 			const elapsed = Date.now() - start;
 			if (resp.ok) {
 				return {
-					ok: true,
-					elapsed,
-					status: "ok",
-					mode: "api_key",
-					source: "direct_model_probe",
-					precision: "model",
-					text: "OK (direct model probe)",
+					result: {
+						ok: true,
+						elapsed,
+						status: "ok",
+						mode: "api_key",
+						source: "direct_model_probe",
+						precision: "model",
+						text: "OK (direct model probe)",
+					},
 				};
 			}
 			let payload: any = null;
@@ -454,32 +413,53 @@ async function probeModelDirect(
 			} catch {}
 			const error = extractErrorMessage(payload, `HTTP ${resp.status}`);
 			return {
-				ok: false,
-				elapsed,
-				status: classifyErrorStatus(resp.status, error),
-				error,
-				mode: "api_key",
-				source: "direct_model_probe",
-				precision: "model",
+				result: {
+					ok: false,
+					elapsed,
+					status: classifyErrorStatus(resp.status, error),
+					error,
+					mode: "api_key",
+					source: "direct_model_probe",
+					precision: "model",
+				},
 			};
 		} catch (err: any) {
 			const elapsed = Date.now() - start;
 			const isTimeout = err?.name === "AbortError";
 			return {
-				ok: false,
-				elapsed,
-				status: isTimeout ? "timeout" : "network",
-				error: isTimeout
-					? "LLM request timed out."
-					: err?.message || "Network error",
-				mode: "api_key",
-				source: "direct_model_probe",
-				precision: "model",
+				result: {
+					ok: false,
+					elapsed,
+					status: isTimeout ? "timeout" : "network",
+					error: isTimeout
+						? "LLM request timed out."
+						: err?.message || "Network error",
+					mode: "api_key",
+					source: "direct_model_probe",
+					precision: "model",
+				},
 			};
 		}
 	}
 
-	return null;
+	return { result: null };
+}
+
+function createProviderProbeFailure(
+	params: ProbeModelParams,
+	startedAt: number,
+	error: string,
+): ModelProbeOutcome {
+	return {
+		ok: false,
+		elapsed: Date.now() - startedAt,
+		model: `${params.providerId}/${params.modelId}`,
+		mode: "unknown",
+		status: "unknown",
+		error,
+		precision: "provider",
+		source: "openclaw_provider_probe",
+	};
 }
 
 async function probeProviderViaOpenclaw(
@@ -487,18 +467,16 @@ async function probeProviderViaOpenclaw(
 ): Promise<ModelProbeOutcome> {
 	const timeoutMs = params.timeoutMs ?? DEFAULT_MODEL_PROBE_TIMEOUT_MS;
 	const startedAt = Date.now();
-	const { stdout, stderr } = await execOpenclaw([
-		"models",
-		"status",
-		"--probe",
-		"--json",
-		"--probe-timeout",
-		String(timeoutMs),
-		"--probe-provider",
-		String(params.providerId),
-	]);
-	const parsed = parseJsonFromMixedOutput(`${stdout}\n${stderr || ""}`);
-	const results: ProbeResult[] = parsed?.auth?.probes?.results || [];
+	let results: ProbeResult[];
+	try {
+		results = await probeOpenclawProviderStatus(params.providerId, timeoutMs);
+	} catch (error) {
+		return createProviderProbeFailure(
+			params,
+			startedAt,
+			sanitizeOpenclawError(error, "Provider probe failed"),
+		);
+	}
 	const fullModel = `${params.providerId}/${params.modelId}`;
 
 	const exact =
@@ -559,12 +537,16 @@ export function parseModelRef(modelStr: string): {
 export async function probeModel(
 	params: ProbeModelParams,
 ): Promise<ModelProbeOutcome> {
+	const startedAt = Date.now();
 	const direct = await probeModelDirect(params);
-	if (direct) {
+	if (direct.result) {
 		return {
-			...direct,
+			...direct.result,
 			model: `${params.providerId}/${params.modelId}`,
 		};
+	}
+	if (direct.error) {
+		return createProviderProbeFailure(params, startedAt, direct.error);
 	}
 	return probeProviderViaOpenclaw(params);
 }

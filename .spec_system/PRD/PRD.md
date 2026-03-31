@@ -28,7 +28,7 @@ This project completes in four phases and twelve implementation sessions. Each s
 |-------|------|----------|-----------|--------|
 | 00 | Foundation | 3 | Contain immediate exposure, establish secure defaults, and lock in the secure deployment model. | Complete |
 | 01 | Sensitive Route Hardening | 3 | Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows. | Complete |
-| 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | In Progress |
+| 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | In Progress (2/3 sessions complete) |
 | 03 | Residual Risk Cleanup and Closeout | 3 | Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings. | Not Started |
 
 ### Phase 00: Foundation

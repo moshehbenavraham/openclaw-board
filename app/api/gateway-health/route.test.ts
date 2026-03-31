@@ -98,4 +98,73 @@ describe("GET /api/gateway-health", () => {
 		expect(body.launchPath).toBeUndefined();
 		expect(body.error).toBe("Gateway down");
 	});
+
+	it("returns healthy when the HTTP and web probes fail but the CLI probe succeeds", async () => {
+		mockExecFile.mockImplementation(async (...args: any[]) => {
+			const commandArgs = Array.isArray(args[1]) ? args[1] : [];
+			if (commandArgs.includes("--version")) {
+				return { stdout: "2026.3.1\n", stderr: "" };
+			}
+			return {
+				stdout: JSON.stringify({ rpc: { ok: true } }),
+				stderr: "",
+			};
+		});
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url.endsWith("/api/health")) {
+				return new Response("upstream failed", { status: 500 });
+			}
+			if (url.includes("/chat?token=")) {
+				return new Response("upstream failed", { status: 500 });
+			}
+			throw new Error(`Unexpected fetch: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { GET } = await import("./route");
+		const response = await GET();
+		const body = await response.json();
+
+		expect(body.ok).toBe(true);
+		expect(body.status).toBe("healthy");
+		expect(body.launchPath).toBe("/gateway/chat");
+	});
+
+	it("returns a sanitized down-state error when the CLI probe output is malformed", async () => {
+		mockExecFile.mockImplementation(async (...args: any[]) => {
+			const commandArgs = Array.isArray(args[1]) ? args[1] : [];
+			if (commandArgs.includes("--version")) {
+				return { stdout: "2026.3.1\n", stderr: "" };
+			}
+			return {
+				stdout: "warning only",
+				stderr: "still not json",
+			};
+		});
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url.endsWith("/api/health")) {
+				return new Response("upstream failed", { status: 500 });
+			}
+			if (url.includes("/chat?token=")) {
+				return new Response("upstream failed", { status: 500 });
+			}
+			throw new Error(`Unexpected fetch: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { GET } = await import("./route");
+		const response = await GET();
+		const body = await response.json();
+
+		expect(body.ok).toBe(false);
+		expect(body.status).toBe("down");
+		expect(body.error).toBe(
+			"Gateway status probe returned malformed OpenClaw output",
+		);
+		expect(body.launchPath).toBeUndefined();
+	});
 });

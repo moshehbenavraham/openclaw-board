@@ -4,7 +4,12 @@ const mockExecOpenclaw = vi.fn();
 
 vi.mock("@/lib/openclaw-cli", () => ({
 	execOpenclaw: (...args: any[]) => mockExecOpenclaw(...args),
-	parseJsonFromMixedOutput: (output: string) => {
+	parseRequiredOpenclawJsonOutput: (
+		stdout: string,
+		stderr = "",
+		invalidOutputMessage = "Malformed OpenClaw JSON output",
+	) => {
+		const output = `${stdout}\n${stderr}`;
 		try {
 			for (let i = 0; i < output.length; i++) {
 				if (output[i] !== "{") continue;
@@ -18,7 +23,7 @@ vi.mock("@/lib/openclaw-cli", () => ({
 				}
 			}
 		} catch {}
-		return null;
+		throw new Error(invalidOutputMessage);
 	},
 }));
 
@@ -177,15 +182,17 @@ describe("testSessionViaCli", () => {
 		expect(result.reply).toContain("completed");
 	});
 
-	it("falls back to raw stdout when no parsed reply fields exist", async () => {
+	it("fails closed when CLI output is malformed", async () => {
 		mockExecOpenclaw.mockResolvedValue({
 			stdout: "some raw output",
 			stderr: "",
 		});
 
 		const result = await testSessionViaCli("main");
-		expect(result.ok).toBe(true);
-		expect(result.reply).toContain("some raw output");
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain(
+			"CLI fallback returned malformed OpenClaw output",
+		);
 	});
 
 	it("returns error when parsed output contains an error field", async () => {

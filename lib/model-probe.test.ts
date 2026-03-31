@@ -3,9 +3,23 @@ import { parseModelRef } from "@/lib/model-probe";
 
 const mockReadJsonFileSync = vi.fn();
 const mockDnsLookup = vi.fn();
+const mockResolveOpenclawAgentModelsFile = vi.fn();
+const mockProbeOpenclawProviderStatus = vi.fn();
 
 vi.mock("@/lib/json", () => ({
 	readJsonFileSync: (...args: any[]) => mockReadJsonFileSync(...args),
+}));
+
+vi.mock("@/lib/openclaw-paths", () => ({
+	resolveOpenclawAgentModelsFile: (...args: any[]) =>
+		mockResolveOpenclawAgentModelsFile(...args),
+}));
+
+vi.mock("@/lib/openclaw-cli", () => ({
+	probeOpenclawProviderStatus: (...args: any[]) =>
+		mockProbeOpenclawProviderStatus(...args),
+	sanitizeOpenclawError: (error: unknown, fallback: string) =>
+		error instanceof Error && error.message ? error.message : fallback,
 }));
 
 vi.mock("node:dns/promises", () => ({
@@ -13,19 +27,6 @@ vi.mock("node:dns/promises", () => ({
 		lookup: (...args: any[]) => mockDnsLookup(...args),
 	},
 }));
-
-vi.mock("node:child_process", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("node:child_process")>();
-	return {
-		...actual,
-		execFile: vi.fn((_cmd: string, _args: string[], _opts: any, cb: any) => {
-			if (typeof cb === "function") {
-				cb(new Error("openclaw not found"), "", "");
-			}
-			return { on: vi.fn(), stdout: { on: vi.fn() }, stderr: { on: vi.fn() } };
-		}),
-	};
-});
 
 describe("parseModelRef", () => {
 	it("splits provider/model format", () => {
@@ -73,6 +74,12 @@ describe("probeModel", () => {
 		mockDnsLookup
 			.mockReset()
 			.mockResolvedValue([{ address: "104.18.33.45", family: 4 }]);
+		mockResolveOpenclawAgentModelsFile
+			.mockReset()
+			.mockReturnValue("/tmp/openclaw-home/agents/main/agent/models.json");
+		mockProbeOpenclawProviderStatus
+			.mockReset()
+			.mockRejectedValue(new Error("Provider probe command failed"));
 	});
 
 	afterEach(() => {
@@ -319,9 +326,21 @@ describe("probeModel", () => {
 		globalThis.fetch = fetchSpy;
 
 		const { probeModel } = await import("@/lib/model-probe");
-		await expect(
-			probeModel({ providerId: "custom", modelId: "model-1", timeoutMs: 5000 }),
-		).rejects.toThrow();
+		const result = await probeModel({
+			providerId: "custom",
+			modelId: "model-1",
+			timeoutMs: 5000,
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			error: "Provider probe command failed",
+			source: "openclaw_provider_probe",
+			precision: "provider",
+		});
+		expect(mockProbeOpenclawProviderStatus).toHaveBeenCalledWith(
+			"custom",
+			5000,
+		);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
@@ -376,7 +395,15 @@ describe("probeModel", () => {
 		const { probeModel } = await import("@/lib/model-probe");
 		await expect(
 			probeModel({ providerId: "custom", modelId: "model-1", timeoutMs: 5000 }),
-		).rejects.toThrow();
+		).resolves.toMatchObject({
+			ok: false,
+			error: "Provider probe command failed",
+			source: "openclaw_provider_probe",
+		});
+		expect(mockProbeOpenclawProviderStatus).toHaveBeenCalledWith(
+			"custom",
+			5000,
+		);
 	});
 
 	it("falls back to CLI probe when provider config is missing", async () => {
@@ -389,7 +416,15 @@ describe("probeModel", () => {
 				modelId: "model-1",
 				timeoutMs: 5000,
 			}),
-		).rejects.toThrow();
+		).resolves.toMatchObject({
+			ok: false,
+			error: "Provider probe command failed",
+			source: "openclaw_provider_probe",
+		});
+		expect(mockProbeOpenclawProviderStatus).toHaveBeenCalledWith(
+			"nonexistent",
+			5000,
+		);
 	});
 
 	it("falls back to CLI probe when models.json is missing", async () => {
@@ -400,7 +435,33 @@ describe("probeModel", () => {
 		const { probeModel } = await import("@/lib/model-probe");
 		await expect(
 			probeModel({ providerId: "test", modelId: "model", timeoutMs: 5000 }),
-		).rejects.toThrow();
+		).resolves.toMatchObject({
+			ok: false,
+			error: "Provider probe command failed",
+			source: "openclaw_provider_probe",
+		});
+		expect(mockProbeOpenclawProviderStatus).toHaveBeenCalledWith("test", 5000);
+	});
+
+	it("fails closed when the shared models path resolver rejects the runtime path", async () => {
+		mockResolveOpenclawAgentModelsFile.mockReturnValueOnce(null);
+		const fetchSpy = vi.fn();
+		globalThis.fetch = fetchSpy;
+
+		const { probeModel } = await import("@/lib/model-probe");
+		const result = await probeModel({
+			providerId: "test",
+			modelId: "model",
+			timeoutMs: 5000,
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: "OpenClaw runtime models path is invalid",
+			source: "openclaw_provider_probe",
+		});
+		expect(mockProbeOpenclawProviderStatus).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("falls back to CLI probe for unsupported API types", async () => {
@@ -417,7 +478,62 @@ describe("probeModel", () => {
 		const { probeModel } = await import("@/lib/model-probe");
 		await expect(
 			probeModel({ providerId: "custom", modelId: "model-1", timeoutMs: 5000 }),
-		).rejects.toThrow();
+		).resolves.toMatchObject({
+			ok: false,
+			error: "Provider probe command failed",
+			source: "openclaw_provider_probe",
+		});
+		expect(mockProbeOpenclawProviderStatus).toHaveBeenCalledWith(
+			"custom",
+			5000,
+		);
+	});
+
+	it("returns a stable failure when the shared provider probe helper reports malformed output", async () => {
+		mockReadJsonFileSync.mockReturnValue({ providers: {} });
+		mockProbeOpenclawProviderStatus.mockRejectedValueOnce(
+			new Error("Provider probe returned malformed OpenClaw output"),
+		);
+
+		const { probeModel } = await import("@/lib/model-probe");
+		const result = await probeModel({
+			providerId: "custom",
+			modelId: "model-1",
+			timeoutMs: 5000,
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: "Provider probe returned malformed OpenClaw output",
+			source: "openclaw_provider_probe",
+			status: "unknown",
+		});
+	});
+
+	it("fails closed when the shared provider probe helper returns no matching result", async () => {
+		mockReadJsonFileSync.mockReturnValue({ providers: {} });
+		mockProbeOpenclawProviderStatus.mockResolvedValueOnce([
+			{
+				provider: "other",
+				model: "other/model",
+				status: "ok",
+			},
+		]);
+
+		const { probeModel } = await import("@/lib/model-probe");
+		const result = await probeModel({
+			providerId: "custom",
+			modelId: "model-1",
+			timeoutMs: 5000,
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: "No probe result for provider custom",
+			source: "openclaw_provider_probe",
+			status: "unknown",
+			precision: "provider",
+		});
 	});
 
 	it("uses custom authHeader when specified as string", async () => {
