@@ -3,29 +3,27 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-let tempDir: string;
-let tempPkgDir: string;
+let tempDir = "";
+let tempPkgDir = "";
 
-vi.mock("@/lib/openclaw-paths", () => {
-	return {
-		get OPENCLAW_HOME() {
-			return tempDir;
-		},
-		get OPENCLAW_CONFIG_PATH() {
-			return path.join(tempDir, "openclaw.json");
-		},
-		getOpenclawPackageCandidates: () => [tempPkgDir],
-	};
-});
+vi.mock("@/lib/openclaw-paths", () => ({
+	get OPENCLAW_HOME() {
+		return tempDir;
+	},
+	get OPENCLAW_CONFIG_PATH() {
+		return path.join(tempDir, "openclaw.json");
+	},
+	getOpenclawPackageCandidates: () => [tempPkgDir],
+}));
 
-function writeConfigFile(agents: any[] = []) {
+function writeConfigFile(agents: unknown[] = []): void {
 	fs.writeFileSync(
 		path.join(tempDir, "openclaw.json"),
 		JSON.stringify({ agents: { list: agents } }),
 	);
 }
 
-function setupPkgDir() {
+function setupPkgDir(): void {
 	fs.writeFileSync(
 		path.join(tempPkgDir, "package.json"),
 		JSON.stringify({ name: "openclaw" }),
@@ -49,16 +47,16 @@ describe("openclaw-skills", () => {
 		it("returns empty skills when no skill directories exist", async () => {
 			writeConfigFile([]);
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
+			const result = await listOpenclawSkills();
 			expect(result.skills).toEqual([]);
 			expect(result.total).toBe(0);
 		});
 
 		it("scans builtin skills from the package directory", async () => {
-			const skillsDir = path.join(tempPkgDir, "skills", "web-search");
-			fs.mkdirSync(skillsDir, { recursive: true });
+			const skillDir = path.join(tempPkgDir, "skills", "web-search");
+			fs.mkdirSync(skillDir, { recursive: true });
 			fs.writeFileSync(
-				path.join(skillsDir, "SKILL.md"),
+				path.join(skillDir, "SKILL.md"),
 				`---
 name: Web Search
 description: Search the web
@@ -69,7 +67,7 @@ description: Search the web
 			writeConfigFile([]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
+			const result = await listOpenclawSkills();
 			expect(result.skills).toHaveLength(1);
 			expect(result.skills[0].id).toBe("web-search");
 			expect(result.skills[0].name).toBe("Web Search");
@@ -91,44 +89,27 @@ description: A custom skill
 			writeConfigFile([]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			expect(result.skills.some((s: any) => s.id === "my-skill")).toBe(true);
-			expect(result.skills.find((s: any) => s.id === "my-skill")?.source).toBe(
-				"custom",
-			);
+			const result = await listOpenclawSkills();
+			expect(result.skills.some((skill) => skill.id === "my-skill")).toBe(true);
+			expect(
+				result.skills.find((skill) => skill.id === "my-skill")?.source,
+			).toBe("custom");
 		});
 
-		it("scans extension skills", async () => {
-			const extDir = path.join(tempPkgDir, "extensions", "my-ext");
-			fs.mkdirSync(extDir, { recursive: true });
+		it("scans extension skills and nested extension skills directories", async () => {
+			const extensionDir = path.join(tempPkgDir, "extensions", "my-ext");
+			const nestedSkillDir = path.join(extensionDir, "skills", "nested-skill");
+			fs.mkdirSync(nestedSkillDir, { recursive: true });
 			fs.writeFileSync(
-				path.join(extDir, "SKILL.md"),
+				path.join(extensionDir, "SKILL.md"),
 				`---
 name: Extension Skill
 description: An extension
 ---
 `,
 			);
-			writeConfigFile([]);
-
-			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			expect(
-				result.skills.some((s: any) => s.source === "extension:my-ext"),
-			).toBe(true);
-		});
-
-		it("scans nested extension skills directories", async () => {
-			const extSkillDir = path.join(
-				tempPkgDir,
-				"extensions",
-				"my-ext",
-				"skills",
-				"nested-skill",
-			);
-			fs.mkdirSync(extSkillDir, { recursive: true });
 			fs.writeFileSync(
-				path.join(extSkillDir, "SKILL.md"),
+				path.join(nestedSkillDir, "SKILL.md"),
 				`---
 name: Nested Skill
 description: Nested in extension
@@ -138,8 +119,11 @@ description: Nested in extension
 			writeConfigFile([]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			expect(result.skills.some((s: any) => s.id === "nested-skill")).toBe(
+			const result = await listOpenclawSkills();
+			expect(
+				result.skills.some((skill) => skill.source === "extension:my-ext"),
+			).toBe(true);
+			expect(result.skills.some((skill) => skill.id === "nested-skill")).toBe(
 				true,
 			);
 		});
@@ -149,15 +133,15 @@ description: Nested in extension
 				{
 					id: "main",
 					name: "MainBot",
-					identity: { emoji: "🤖" },
+					identity: { emoji: ":bot:" },
 				},
 			]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
+			const result = await listOpenclawSkills();
 			expect(result.agents.main).toEqual({
 				name: "MainBot",
-				emoji: "🤖",
+				emoji: ":bot:",
 			});
 		});
 
@@ -165,7 +149,7 @@ description: Nested in extension
 			writeConfigFile([{ id: "helper" }]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
+			const result = await listOpenclawSkills();
 			expect(result.agents.helper.name).toBe("helper");
 		});
 
@@ -179,16 +163,14 @@ description: Nested in extension
 			writeConfigFile([]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			const skill = result.skills.find((s: any) => s.id === "plain");
+			const result = await listOpenclawSkills();
+			const skill = result.skills.find((entry) => entry.id === "plain");
 			expect(skill).toBeDefined();
 			expect(skill?.name).toBe("plain");
 			expect(skill?.emoji).toBe("[tool]");
 		});
-	});
 
-	describe("agent skills from sessions", () => {
-		it("populates usedBy from agent session data", async () => {
+		it("ignores malformed snapshots and oversize snapshot files while collecting usedBy hints", async () => {
 			const skillDir = path.join(tempPkgDir, "skills", "code-review");
 			fs.mkdirSync(skillDir, { recursive: true });
 			fs.writeFileSync(
@@ -200,31 +182,33 @@ description: Nested in extension
 			fs.mkdirSync(sessionsDir, { recursive: true });
 			fs.writeFileSync(
 				path.join(sessionsDir, "session-001.jsonl"),
-				'{"skillsSnapshot":[{"name":"code-review"}]}\n',
+				'{"skillsSnapshot":[{"name"',
 			);
-
+			fs.writeFileSync(
+				path.join(sessionsDir, "session-002.jsonl"),
+				"x".repeat(262_145),
+			);
+			fs.writeFileSync(
+				path.join(sessionsDir, "session-003.jsonl"),
+				'{"skillsSnapshot":[{"name":"code-review"},{"name":"exec"}]}\n',
+			);
 			writeConfigFile([{ id: "helper", name: "Helper" }]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			const skill = result.skills.find((s: any) => s.id === "code-review");
-			expect(skill).toBeDefined();
-			expect(skill?.usedBy).toContain("helper");
+			const result = await listOpenclawSkills();
+			const skill = result.skills.find((entry) => entry.id === "code-review");
+			expect(skill?.usedBy).toEqual(["helper"]);
 		});
 
-		it("ignores built-in tool names in session skill extraction", async () => {
-			const sessionsDir = path.join(tempDir, "agents", "main", "sessions");
-			fs.mkdirSync(sessionsDir, { recursive: true });
-			fs.writeFileSync(
-				path.join(sessionsDir, "session-002.jsonl"),
-				'{"skillsSnapshot":[{"name":"exec"},{"name":"read"},{"name":"custom-tool"}]}\n',
-			);
-
-			writeConfigFile([{ id: "main" }]);
+		it("excludes oversize skill files from the skills listing", async () => {
+			const skillDir = path.join(tempPkgDir, "skills", "huge-skill");
+			fs.mkdirSync(skillDir, { recursive: true });
+			fs.writeFileSync(path.join(skillDir, "SKILL.md"), "A".repeat(131_073));
+			writeConfigFile([]);
 
 			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
-			const result = listOpenclawSkills();
-			expect(result.agents.main).toBeDefined();
+			const result = await listOpenclawSkills();
+			expect(result.skills).toEqual([]);
 		});
 	});
 
@@ -232,7 +216,7 @@ description: Nested in extension
 		it("returns null when skill is not found", async () => {
 			writeConfigFile([]);
 			const { getOpenclawSkillContent } = await import("@/lib/openclaw-skills");
-			const result = getOpenclawSkillContent("builtin", "nonexistent");
+			const result = await getOpenclawSkillContent("builtin", "nonexistent");
 			expect(result).toBeNull();
 		});
 
@@ -249,10 +233,24 @@ description: For testing
 			writeConfigFile([]);
 
 			const { getOpenclawSkillContent } = await import("@/lib/openclaw-skills");
-			const result = getOpenclawSkillContent("builtin", "test-skill");
+			const result = await getOpenclawSkillContent("builtin", "test-skill");
 			expect(result).not.toBeNull();
 			expect(result?.skill.id).toBe("test-skill");
 			expect(result?.content).toContain("Test Skill Content");
+		});
+
+		it("rejects oversize skill content reads", async () => {
+			const skillDir = path.join(tempPkgDir, "skills", "huge-skill");
+			fs.mkdirSync(skillDir, { recursive: true });
+			fs.writeFileSync(path.join(skillDir, "SKILL.md"), "A".repeat(131_073));
+			writeConfigFile([]);
+
+			const { getOpenclawSkillContent } = await import("@/lib/openclaw-skills");
+			await expect(
+				getOpenclawSkillContent("builtin", "huge-skill"),
+			).rejects.toMatchObject({
+				code: "file_too_large",
+			});
 		});
 	});
 });

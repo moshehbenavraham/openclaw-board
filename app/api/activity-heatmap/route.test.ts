@@ -44,7 +44,7 @@ describe("GET /api/activity-heatmap", () => {
 	});
 
 	it("returns cached heatmap responses and rate limits repeated reads", async () => {
-		const readSpy = vi.spyOn(fs, "readFileSync");
+		const readSpy = vi.spyOn(fs.promises, "readFile");
 		const route = await import("./route");
 
 		const first = await route.GET(createHeatmapRequest("198.51.100.61"));
@@ -69,6 +69,27 @@ describe("GET /api/activity-heatmap", () => {
 			rateLimit: {
 				capability: "activity_heatmap",
 			},
+		});
+	});
+
+	it("returns a sanitized failure when a session file exceeds the read budget", async () => {
+		fs.writeFileSync(
+			path.join(
+				tempOpenclawHome,
+				"agents",
+				"main",
+				"sessions",
+				"oversize.jsonl",
+			),
+			"x".repeat(1_048_577),
+		);
+
+		const route = await import("./route");
+		const response = await route.GET(createHeatmapRequest("198.51.100.63"));
+
+		expect(response.status).toBe(500);
+		await expect(response.json()).resolves.toEqual({
+			error: "Activity heatmap generation failed",
 		});
 	});
 });

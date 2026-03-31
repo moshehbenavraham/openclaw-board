@@ -19,7 +19,7 @@ Next.js Middleware (rate limiting, security headers)
    +-- API Route Handlers (/app/api/*)
           |
           +-- lib/security/*      (auth, operator session, env flags, route guards)
-          +-- lib/openclaw-*.ts   (config, CLI bridge, path resolution)
+          +-- lib/openclaw-*.ts   (config, CLI bridge, path resolution, bounded reads)
           +-- lib/pixel-office/*  (pixel office engine)
           |
           v
@@ -51,7 +51,12 @@ Next.js Middleware (rate limiting, security headers)
 ### OpenClaw Bridge (`lib/openclaw-*.ts`)
 - **Purpose**: Config reading, CLI invocation, path resolution, and skill parsing
 - **Tech**: TypeScript with filesystem and child-process access
-- **Location**: `lib/openclaw-cli.ts`, `lib/openclaw-paths.ts`, `lib/openclaw-skills.ts`
+- **Location**: `lib/openclaw-cli.ts`, `lib/openclaw-paths.ts`, `lib/openclaw-read-paths.ts`, `lib/openclaw-skills.ts`
+
+### OpenClaw Read Paths (`lib/openclaw-read-paths.ts`)
+- **Purpose**: Shared bounded async directory scans, file-size checks, and keyed cache reuse for heavy read routes
+- **Tech**: TypeScript with `fs/promises`, in-memory TTL caching, and in-flight dedupe
+- **Location**: `lib/openclaw-read-paths.ts`
 
 ### Pixel Office Engine (`lib/pixel-office/`)
 - **Purpose**: Animated pixel-art office rendering with agent characters

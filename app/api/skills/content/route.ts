@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getOpenclawSkillContent } from "@/lib/openclaw-skills";
 
+const SKILL_SOURCE_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
+const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
 export async function GET(request: Request) {
 	try {
 		const { searchParams } = new URL(request.url);
@@ -14,7 +17,14 @@ export async function GET(request: Request) {
 			);
 		}
 
-		const result = getOpenclawSkillContent(source, id);
+		if (!SKILL_SOURCE_PATTERN.test(source) || !SKILL_ID_PATTERN.test(id)) {
+			return NextResponse.json(
+				{ error: "Invalid source or id" },
+				{ status: 400 },
+			);
+		}
+
+		const result = await getOpenclawSkillContent(source, id);
 		if (!result) {
 			return NextResponse.json({ error: "Skill not found" }, { status: 404 });
 		}
@@ -25,9 +35,10 @@ export async function GET(request: Request) {
 			source: result.skill.source,
 			content: result.content,
 		});
-	} catch (err: unknown) {
+	} catch (error: unknown) {
+		console.error("[skills/content] failed", error);
 		return NextResponse.json(
-			{ error: err instanceof Error ? err.message : String(err) },
+			{ error: "Skill content unavailable" },
 			{ status: 500 },
 		);
 	}

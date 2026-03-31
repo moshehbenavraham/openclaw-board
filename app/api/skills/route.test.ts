@@ -8,7 +8,7 @@ vi.mock("@/lib/openclaw-skills", () => ({
 
 describe("GET /api/skills", () => {
 	it("returns skills from listOpenclawSkills", async () => {
-		mockListOpenclawSkills.mockReturnValue({
+		mockListOpenclawSkills.mockResolvedValue({
 			skills: [
 				{
 					id: "web_search",
@@ -33,14 +33,13 @@ describe("GET /api/skills", () => {
 	});
 
 	it("returns 500 when listOpenclawSkills throws", async () => {
-		mockListOpenclawSkills.mockImplementation(() => {
-			throw new Error("Config not found");
-		});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		mockListOpenclawSkills.mockRejectedValue(new Error("Config not found"));
 
 		const { GET } = await import("./route");
 		const response = await GET();
 		expect(response.status).toBe(500);
 		const body = await response.json();
-		expect(body.error).toBe("Config not found");
+		expect(body.error).toBe("Unable to load skills");
 	});
 });

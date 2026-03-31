@@ -26,7 +26,7 @@ describe("GET /api/skills/content", () => {
 	});
 
 	it("returns 404 when skill is not found", async () => {
-		mockGetOpenclawSkillContent.mockReturnValue(null);
+		mockGetOpenclawSkillContent.mockResolvedValue(null);
 
 		const { GET } = await import("./route");
 		const response = await GET(
@@ -40,7 +40,7 @@ describe("GET /api/skills/content", () => {
 	});
 
 	it("returns skill content when found", async () => {
-		mockGetOpenclawSkillContent.mockReturnValue({
+		mockGetOpenclawSkillContent.mockResolvedValue({
 			skill: {
 				id: "web_search",
 				name: "Web Search",
@@ -61,10 +61,22 @@ describe("GET /api/skills/content", () => {
 		expect(body.content).toContain("Web Search");
 	});
 
-	it("returns 500 when an error is thrown", async () => {
-		mockGetOpenclawSkillContent.mockImplementation(() => {
-			throw new Error("Read error");
+	it("returns 400 when source or id is invalid", async () => {
+		const { GET } = await import("./route");
+		const response = await GET(
+			new Request(
+				"http://localhost:3000/api/skills/content?source=../../etc&id=web_search",
+			),
+		);
+		expect(response.status).toBe(400);
+		await expect(response.json()).resolves.toEqual({
+			error: "Invalid source or id",
 		});
+	});
+
+	it("returns 500 when an error is thrown", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		mockGetOpenclawSkillContent.mockRejectedValue(new Error("Read error"));
 
 		const { GET } = await import("./route");
 		const response = await GET(
@@ -74,6 +86,6 @@ describe("GET /api/skills/content", () => {
 		);
 		expect(response.status).toBe(500);
 		const body = await response.json();
-		expect(body.error).toBe("Read error");
+		expect(body.error).toBe("Skill content unavailable");
 	});
 });

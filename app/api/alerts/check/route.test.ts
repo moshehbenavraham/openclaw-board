@@ -264,6 +264,12 @@ describe("POST /api/alerts/check", () => {
 			status: "sent",
 			mode: "live_send",
 		});
+		const persistedConfig = JSON.parse(
+			fs.readFileSync(path.join(tempOpenclawHome, "alerts.json"), "utf8"),
+		);
+		expect(
+			persistedConfig.lastAlerts.model_unavailable_openai_gpt - 4.1,
+		).toEqual(expect.any(Number));
 	});
 
 	it("fails closed when the alert recipient session path is missing", async () => {
@@ -370,6 +376,53 @@ describe("POST /api/alerts/check", () => {
 		expect(body.notifications[0]).toMatchObject({
 			status: "dry_run",
 			mode: "dry_run",
+		});
+	});
+
+	it("returns a sanitized failure when the cron-store override escapes the runtime boundary", async () => {
+		fs.writeFileSync(
+			path.join(tempOpenclawHome, "openclaw.json"),
+			JSON.stringify({
+				cron: {
+					store: "../secrets/jobs.json",
+				},
+				models: {
+					providers: {},
+				},
+				channels: {},
+				bindings: [],
+			}),
+		);
+		fs.writeFileSync(
+			path.join(tempOpenclawHome, "alerts.json"),
+			JSON.stringify({
+				enabled: true,
+				receiveAgent: "main",
+				checkInterval: 10,
+				rules: [
+					{
+						id: "cron_continuous_failure",
+						name: "Cron Continuous Failure",
+						enabled: true,
+						threshold: 3,
+					},
+				],
+				lastAlerts: {},
+			}),
+		);
+
+		const cookie = await makeAuthCookie();
+		const route = await import("./route");
+		const response = await route.POST(
+			new Request("http://localhost:3000/api/alerts/check", {
+				method: "POST",
+				headers: withLocalOrigin({ cookie }),
+			}),
+		);
+
+		expect(response.status).toBe(500);
+		await expect(response.json()).resolves.toEqual({
+			error: "Alert diagnostics failed",
 		});
 	});
 

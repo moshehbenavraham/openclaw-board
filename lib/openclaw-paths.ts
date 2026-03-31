@@ -3,18 +3,36 @@ import os from "node:os";
 import path from "node:path";
 
 const home = os.homedir();
+const DEFAULT_OPENCLAW_HOME = path.join(home, ".openclaw");
 const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const CRON_STORE_PREFERRED_SEGMENTS = ["cron-store", "jobs.json"] as const;
 const CRON_STORE_LEGACY_SEGMENTS = ["cron", "jobs.json"] as const;
 
-export const OPENCLAW_HOME =
-	process.env.OPENCLAW_HOME || path.join(home, ".openclaw");
+export const OPENCLAW_HOME = process.env.OPENCLAW_HOME || DEFAULT_OPENCLAW_HOME;
 export const OPENCLAW_CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
 export const OPENCLAW_AGENTS_DIR = path.join(OPENCLAW_HOME, "agents");
 export const OPENCLAW_PIXEL_OFFICE_DIR = path.join(
 	OPENCLAW_HOME,
 	"pixel-office",
 );
+
+export type OpenclawPathErrorCode =
+	| "openclaw_home_invalid"
+	| "openclaw_runtime_path_invalid"
+	| "openclaw_config_path_invalid"
+	| "openclaw_alerts_path_invalid"
+	| "openclaw_agents_path_invalid"
+	| "openclaw_cron_store_path_invalid";
+
+export class OpenclawPathError extends Error {
+	readonly code: OpenclawPathErrorCode;
+
+	constructor(code: OpenclawPathErrorCode, message: string) {
+		super(message);
+		this.name = "OpenclawPathError";
+		this.code = code;
+	}
+}
 
 function uniquePaths(paths: Array<string | undefined>): string[] {
 	return Array.from(
@@ -24,6 +42,31 @@ function uniquePaths(paths: Array<string | undefined>): string[] {
 
 function normalizeAbsolutePath(value: string): string {
 	return path.resolve(value);
+}
+
+function expandHomePath(value: string, userHome = home): string {
+	if (value === "~") return userHome;
+	if (value.startsWith("~/") || value.startsWith("~\\")) {
+		return path.join(userHome, value.slice(2));
+	}
+	return value;
+}
+
+export function resolveConfiguredOpenclawHome(
+	openclawHome = process.env.OPENCLAW_HOME,
+	userHome = home,
+): string | null {
+	const trimmed = openclawHome?.trim();
+	if (!trimmed) {
+		return normalizeAbsolutePath(DEFAULT_OPENCLAW_HOME);
+	}
+
+	const expanded = expandHomePath(trimmed, userHome);
+	if (!path.isAbsolute(expanded)) {
+		return null;
+	}
+
+	return normalizeAbsolutePath(expanded);
 }
 
 export function isPathWithinBoundary(
@@ -59,7 +102,8 @@ export function resolveOpenclawAgentDir(
 ): string | null {
 	if (!isValidOpenclawAgentId(agentId)) return null;
 
-	const agentsDir = normalizeAbsolutePath(path.join(openclawHome, "agents"));
+	const agentsDir = resolveOpenclawAgentsDir(openclawHome);
+	if (!agentsDir) return null;
 	return resolveWithinBoundary(agentsDir, agentId);
 }
 
@@ -85,14 +129,46 @@ export function resolveOpenclawRuntimePath(
 	openclawHome = OPENCLAW_HOME,
 	...segments: string[]
 ): string | null {
-	const normalizedHome = normalizeAbsolutePath(openclawHome);
+	const normalizedHome = resolveConfiguredOpenclawHome(openclawHome);
+	if (!normalizedHome) return null;
 	return resolveWithinBoundary(normalizedHome, ...segments);
+}
+
+export function resolveOpenclawRuntimeOverridePath(
+	rawPath: string | null | undefined,
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	const normalizedHome = resolveConfiguredOpenclawHome(openclawHome);
+	if (!normalizedHome || typeof rawPath !== "string" || !rawPath.trim()) {
+		return null;
+	}
+
+	const trimmed = rawPath.trim();
+	const candidatePath = path.isAbsolute(trimmed)
+		? path.resolve(trimmed)
+		: path.resolve(normalizedHome, trimmed);
+
+	return isPathWithinBoundary(candidatePath, normalizedHome)
+		? candidatePath
+		: null;
+}
+
+export function resolveOpenclawAgentsDir(
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	return resolveOpenclawRuntimePath(openclawHome, "agents");
 }
 
 export function resolveOpenclawConfigFile(
 	openclawHome = OPENCLAW_HOME,
 ): string | null {
 	return resolveOpenclawRuntimePath(openclawHome, "openclaw.json");
+}
+
+export function resolveOpenclawAlertsConfigFile(
+	openclawHome = OPENCLAW_HOME,
+): string | null {
+	return resolveOpenclawRuntimePath(openclawHome, "alerts.json");
 }
 
 export function resolveOpenclawAgentConfigDir(
@@ -116,12 +192,14 @@ export function resolveOpenclawAgentModelsFile(
 export function getOpenclawCronStoreBoundaries(
 	openclawHome = OPENCLAW_HOME,
 ): string[] {
+	const normalizedHome = resolveConfiguredOpenclawHome(openclawHome);
+	if (!normalizedHome) return [];
 	return [
 		normalizeAbsolutePath(
-			path.join(openclawHome, CRON_STORE_PREFERRED_SEGMENTS[0]),
+			path.join(normalizedHome, CRON_STORE_PREFERRED_SEGMENTS[0]),
 		),
 		normalizeAbsolutePath(
-			path.join(openclawHome, CRON_STORE_LEGACY_SEGMENTS[0]),
+			path.join(normalizedHome, CRON_STORE_LEGACY_SEGMENTS[0]),
 		),
 	];
 }
@@ -131,7 +209,8 @@ export function resolveOpenclawCronStorePath(
 	openclawHome = OPENCLAW_HOME,
 	userHome = home,
 ): string | null {
-	const normalizedHome = normalizeAbsolutePath(openclawHome);
+	const normalizedHome = resolveConfiguredOpenclawHome(openclawHome, userHome);
+	if (!normalizedHome) return null;
 	const allowedRoots = getOpenclawCronStoreBoundaries(normalizedHome);
 	const preferredDefaultPath = path.join(
 		normalizedHome,
@@ -160,6 +239,96 @@ export function resolveOpenclawCronStorePath(
 	return allowedRoots.some((root) => isPathWithinBoundary(candidatePath, root))
 		? candidatePath
 		: null;
+}
+
+function getOpenclawPathErrorMessage(code: OpenclawPathErrorCode): string {
+	switch (code) {
+		case "openclaw_home_invalid":
+			return "OpenClaw runtime root is invalid";
+		case "openclaw_config_path_invalid":
+			return "OpenClaw runtime config path is invalid";
+		case "openclaw_alerts_path_invalid":
+			return "OpenClaw alerts config path is invalid";
+		case "openclaw_agents_path_invalid":
+			return "OpenClaw agents path is invalid";
+		case "openclaw_cron_store_path_invalid":
+			return "OpenClaw cron store path is invalid";
+		case "openclaw_runtime_path_invalid":
+		default:
+			return "OpenClaw runtime path is invalid";
+	}
+}
+
+function throwOpenclawPathError(code: OpenclawPathErrorCode): never {
+	throw new OpenclawPathError(code, getOpenclawPathErrorMessage(code));
+}
+
+export function resolveOpenclawHomeOrThrow(
+	openclawHome = process.env.OPENCLAW_HOME,
+	userHome = home,
+): string {
+	const normalizedHome = resolveConfiguredOpenclawHome(openclawHome, userHome);
+	if (!normalizedHome) {
+		throwOpenclawPathError("openclaw_home_invalid");
+	}
+	return normalizedHome;
+}
+
+export function resolveOpenclawRuntimePathOrThrow(
+	openclawHome = OPENCLAW_HOME,
+	...segments: string[]
+): string {
+	const runtimePath = resolveOpenclawRuntimePath(openclawHome, ...segments);
+	if (!runtimePath) {
+		throwOpenclawPathError("openclaw_runtime_path_invalid");
+	}
+	return runtimePath;
+}
+
+export function resolveOpenclawAgentsDirOrThrow(
+	openclawHome = OPENCLAW_HOME,
+): string {
+	const agentsDir = resolveOpenclawAgentsDir(openclawHome);
+	if (!agentsDir) {
+		throwOpenclawPathError("openclaw_agents_path_invalid");
+	}
+	return agentsDir;
+}
+
+export function resolveOpenclawConfigFileOrThrow(
+	openclawHome = OPENCLAW_HOME,
+): string {
+	const configPath = resolveOpenclawConfigFile(openclawHome);
+	if (!configPath) {
+		throwOpenclawPathError("openclaw_config_path_invalid");
+	}
+	return configPath;
+}
+
+export function resolveOpenclawAlertsConfigFileOrThrow(
+	openclawHome = OPENCLAW_HOME,
+): string {
+	const configPath = resolveOpenclawAlertsConfigFile(openclawHome);
+	if (!configPath) {
+		throwOpenclawPathError("openclaw_alerts_path_invalid");
+	}
+	return configPath;
+}
+
+export function resolveOpenclawCronStorePathOrThrow(
+	rawStorePath: string | null | undefined,
+	openclawHome = OPENCLAW_HOME,
+	userHome = home,
+): string {
+	const storePath = resolveOpenclawCronStorePath(
+		rawStorePath,
+		openclawHome,
+		userHome,
+	);
+	if (!storePath) {
+		throwOpenclawPathError("openclaw_cron_store_path_invalid");
+	}
+	return storePath;
 }
 
 export function getOpenclawPackageCandidates(

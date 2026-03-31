@@ -3,14 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockGetConfigCache = vi.fn();
-const mockSetConfigCache = vi.fn();
-
-vi.mock("@/lib/config-cache", () => ({
-	getConfigCache: mockGetConfigCache,
-	setConfigCache: mockSetConfigCache,
-}));
-
 function writeJson(filePath: string, value: unknown): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
@@ -22,14 +14,14 @@ describe("GET /api/config", () => {
 
 	beforeEach(() => {
 		vi.resetModules();
-		mockGetConfigCache.mockReset();
-		mockSetConfigCache.mockReset();
-		mockGetConfigCache.mockReturnValue(null);
 		tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "krox-config-"));
 		process.env = { ...originalEnv, OPENCLAW_HOME: tempHome };
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		const cache = await import("@/lib/config-cache");
+		cache.clearConfigCache();
+		vi.restoreAllMocks();
 		process.env = { ...originalEnv };
 		if (tempHome) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
@@ -121,5 +113,63 @@ describe("GET /api/config", () => {
 		expect(helperFeishu.accountId).toBe("helper");
 		expect(helperFeishu.launchPath).toBeUndefined();
 		expect(helperFeishu.appId).toBeUndefined();
+	});
+
+	it("serves an isolated cached snapshot on cache hits", async () => {
+		const cache = await import("@/lib/config-cache");
+		const cachedData = {
+			agents: [{ id: "main", name: "Main", emoji: "M", platforms: [] }],
+			providers: [],
+			defaults: { model: "provider/default", fallbacks: [] },
+			gateway: { launchPath: "/gateway/chat" },
+			groupChats: [],
+		};
+		cache.setConfigCache({ data: cachedData, ts: Date.now() });
+		cachedData.agents[0].name = "Mutated";
+
+		const { GET } = await import("./route");
+		const response = await GET();
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toMatchObject({
+			agents: [{ id: "main", name: "Main" }],
+		});
+	});
+
+	it("returns a sanitized error when the runtime root is invalid", async () => {
+		vi.resetModules();
+		process.env = { ...originalEnv, OPENCLAW_HOME: "relative/openclaw-home" };
+
+		const { GET } = await import("./route");
+		const response = await GET();
+		expect(response.status).toBe(500);
+		await expect(response.json()).resolves.toEqual({
+			error: "Configuration unavailable",
+		});
+	});
+
+	it("returns a sanitized error when runtime config reads fail unexpectedly", async () => {
+		const configPath = path.join(tempHome, "openclaw.json");
+		writeJson(configPath, {
+			agents: {
+				defaults: { model: "provider/default", fallbacks: [] },
+			},
+		});
+		const originalReadFileSync = fs.readFileSync.bind(fs);
+		vi.spyOn(fs, "readFileSync").mockImplementation(((
+			filePath: fs.PathOrFileDescriptor,
+			options?: any,
+		) => {
+			if (String(filePath) === configPath) {
+				throw new Error("EACCES: /tmp/secret/runtime/openclaw.json");
+			}
+			return originalReadFileSync(filePath, options);
+		}) as typeof fs.readFileSync);
+
+		const { GET } = await import("./route");
+		const response = await GET();
+		expect(response.status).toBe(500);
+		await expect(response.json()).resolves.toEqual({
+			error: "Configuration unavailable",
+		});
 	});
 });

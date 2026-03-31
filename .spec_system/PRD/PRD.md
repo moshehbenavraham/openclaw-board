@@ -28,7 +28,7 @@ This project completes in four phases and twelve implementation sessions. Each s
 |-------|------|----------|-----------|--------|
 | 00 | Foundation | 3 | Contain immediate exposure, establish secure defaults, and lock in the secure deployment model. | Complete |
 | 01 | Sensitive Route Hardening | 3 | Close the remaining auth, route-boundary, and abuse-prone gaps on sensitive flows. | Complete |
-| 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | In Progress (2/3 sessions complete) |
+| 02 | Runtime Boundary and Read Path Hardening | 3 | Validate inputs, bound filesystem and runtime access, and keep heavy read paths safe under load. | Complete |
 | 03 | Residual Risk Cleanup and Closeout | 3 | Resolve remaining hardening items, verify fixes, and close the project with aligned docs and findings. | Not Started |
 
 ### Phase 00: Foundation
@@ -70,8 +70,8 @@ This project completes in four phases and twelve implementation sessions. Each s
 | Session | Name | Clear Objective | Est. Tasks | Status |
 |---------|------|-----------------|------------|--------|
 | 02-01 | Payload validation and write-path safety | Add schema validation, payload-size limits, and write safety rules to alert, pixel-office, and similar mutation flows. | ~15-20 | Complete |
-| 02-02 | Runtime bridge consolidation and safe parsing | Deduplicate OpenClaw bridge helpers, harden CLI parsing and execution, validate config-sourced runtime paths, and fail safely on malformed runtime data. | ~12-18 | Not Started |
-| 02-03 | Async, cached, sanitized read paths | Replace sync I/O in request paths, add caching and concurrency bounds, and sanitize response metadata and error surfaces on read-heavy routes. | ~15-20 | Not Started |
+| 02-02 | Runtime bridge consolidation and safe parsing | Deduplicate OpenClaw bridge helpers, harden CLI parsing and execution, validate config-sourced runtime paths, and fail safely on malformed runtime data. | ~12-18 | Complete |
+| 02-03 | Async, cached, sanitized read paths | Replace sync I/O in request paths, add caching and concurrency bounds, and sanitize response metadata and error surfaces on read-heavy routes. | ~15-20 | Complete |
 
 ### Phase 03: Residual Risk Cleanup and Closeout
 

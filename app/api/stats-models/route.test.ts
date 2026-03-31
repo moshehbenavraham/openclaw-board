@@ -5,22 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
-function createStatsRequest(ip: string): Request {
-	return new Request("http://localhost:3000/api/stats-all", {
-		headers: {
-			"cf-connecting-ip": ip,
-		},
-	});
-}
-
-describe("GET /api/stats-all", () => {
+describe("GET /api/stats-models", () => {
 	let tempOpenclawHome = "";
 
 	beforeEach(() => {
 		vi.resetModules();
 		Object.assign(process.env, ORIGINAL_ENV);
 		tempOpenclawHome = fs.mkdtempSync(
-			path.join(os.tmpdir(), "kroxboard-stats-all-"),
+			path.join(os.tmpdir(), "kroxboard-stats-models-"),
 		);
 		process.env.OPENCLAW_HOME = tempOpenclawHome;
 		fs.mkdirSync(path.join(tempOpenclawHome, "agents", "main", "sessions"), {
@@ -36,14 +28,36 @@ describe("GET /api/stats-all", () => {
 				}),
 				JSON.stringify({
 					type: "message",
-					timestamp: "2026-03-31T00:00:02.000Z",
+					timestamp: "2026-03-31T00:00:03.000Z",
 					message: {
 						role: "assistant",
 						stopReason: "stop",
+						model: "gpt-4o-mini",
+						provider: "openai",
 						usage: {
 							input: 10,
 							output: 5,
 							totalTokens: 15,
+						},
+					},
+				}),
+				JSON.stringify({
+					type: "message",
+					timestamp: "2026-03-31T00:01:00.000Z",
+					message: { role: "user" },
+				}),
+				JSON.stringify({
+					type: "message",
+					timestamp: "2026-03-31T00:01:04.000Z",
+					message: {
+						role: "assistant",
+						stopReason: "stop",
+						model: "claude-sonnet",
+						provider: "anthropic",
+						usage: {
+							input: 25,
+							output: 5,
+							totalTokens: 30,
 						},
 					},
 				}),
@@ -54,34 +68,31 @@ describe("GET /api/stats-all", () => {
 	afterEach(() => {
 		fs.rmSync(tempOpenclawHome, { recursive: true, force: true });
 		process.env = { ...ORIGINAL_ENV };
+		vi.restoreAllMocks();
 	});
 
-	it("returns cached stats responses and rate limits repeated reads", async () => {
+	it("returns cached model stats with deterministic ordering", async () => {
 		const readSpy = vi.spyOn(fs.promises, "readFile");
 		const route = await import("./route");
 
-		const first = await route.GET(createStatsRequest("198.51.100.60"));
+		const first = await route.GET();
 		expect(first.status).toBe(200);
 		const firstBody = await first.json();
-		expect(firstBody.daily).toHaveLength(1);
+		expect(firstBody.models).toHaveLength(2);
+		expect(
+			firstBody.models.map((entry: { modelId: string }) => entry.modelId),
+		).toEqual(["claude-sonnet", "gpt-4o-mini"]);
+		expect(firstBody.models[0]).toMatchObject({
+			modelId: "claude-sonnet",
+			provider: "anthropic",
+			totalTokens: 30,
+			avgResponseMs: 4000,
+		});
 		expect(readSpy).toHaveBeenCalledTimes(1);
 
-		const second = await route.GET(createStatsRequest("198.51.100.60"));
+		const second = await route.GET();
 		expect(second.status).toBe(200);
 		expect(readSpy).toHaveBeenCalledTimes(1);
-
-		for (let attempt = 0; attempt < 10; attempt++) {
-			const response = await route.GET(createStatsRequest("198.51.100.60"));
-			expect(response.status).toBe(200);
-		}
-
-		const denied = await route.GET(createStatsRequest("198.51.100.60"));
-		expect(denied.status).toBe(429);
-		await expect(denied.json()).resolves.toMatchObject({
-			rateLimit: {
-				capability: "stats_all",
-			},
-		});
 	});
 
 	it("returns a sanitized failure when a session file exceeds the read budget", async () => {
@@ -97,11 +108,11 @@ describe("GET /api/stats-all", () => {
 		);
 
 		const route = await import("./route");
-		const response = await route.GET(createStatsRequest("198.51.100.62"));
+		const response = await route.GET();
 
 		expect(response.status).toBe(500);
 		await expect(response.json()).resolves.toEqual({
-			error: "Stats aggregation failed",
+			error: "Unable to load model stats",
 		});
 	});
 });

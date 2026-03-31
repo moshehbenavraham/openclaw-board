@@ -1,11 +1,17 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { resolveOpenclawAgentSessionsDir } from "@/lib/openclaw-paths";
 import {
+	listBoundedDirectory,
+	readBoundedTextFile,
+} from "@/lib/openclaw-read-paths";
+import {
 	createInvalidRequestBoundaryResponse,
 	validateAgentId,
 } from "@/lib/security/request-boundary";
+
+const MAX_SESSION_FILES_PER_AGENT = 256;
+const MAX_SESSION_FILE_BYTES = 1_048_576;
 
 interface DayStat {
 	date: string; // YYYY-MM-DD
@@ -17,33 +23,37 @@ interface DayStat {
 	responseTimes: number[]; // internal, stripped before response
 }
 
-function parseSessions(sessionsDir: string): Omit<DayStat, "responseTimes">[] {
+async function parseSessions(
+	sessionsDir: string,
+): Promise<Omit<DayStat, "responseTimes">[]> {
 	const dayMap: Record<string, DayStat> = {};
 
-	// Find all JSONL files (skip deleted ones)
-	let files: string[];
-	try {
-		files = fs
-			.readdirSync(sessionsDir)
-			.filter((f) => f.endsWith(".jsonl") && !f.includes(".deleted."));
-	} catch {
-		return [];
-	}
+	const files = await listBoundedDirectory(sessionsDir, {
+		allowMissing: true,
+		filter: (entry) =>
+			entry.isFile() &&
+			entry.name.endsWith(".jsonl") &&
+			!entry.name.includes(".deleted."),
+		maxEntries: MAX_SESSION_FILES_PER_AGENT,
+	});
 
 	for (const file of files) {
 		const filePath = path.join(sessionsDir, file);
-		let content: string;
-		try {
-			content = fs.readFileSync(filePath, "utf-8");
-		} catch {
+		const content = await readBoundedTextFile(filePath, {
+			allowMissing: true,
+			maxBytes: MAX_SESSION_FILE_BYTES,
+		});
+		if (!content) {
 			continue;
 		}
 
-		const lines = content.trim().split("\n");
+		const lines = content.split("\n");
 		// Collect messages for response time calculation
 		const messages: { role: string; ts: string; stopReason?: string }[] = [];
 
 		for (const line of lines) {
+			if (!line.trim()) continue;
+
 			let entry: {
 				type?: string;
 				message?: {
@@ -158,7 +168,7 @@ export async function GET(
 			});
 		}
 
-		const daily = parseSessions(sessionsDir);
+		const daily = await parseSessions(sessionsDir);
 
 		// Aggregate weekly and monthly
 		const weekMap: Record<string, Omit<DayStat, "responseTimes">> = {};
@@ -217,7 +227,8 @@ export async function GET(
 				a.date.localeCompare(b.date),
 			),
 		});
-	} catch {
+	} catch (error: unknown) {
+		console.error("[stats/agent] failed", error);
 		return NextResponse.json(
 			{ error: "Unable to load stats" },
 			{ status: 500 },

@@ -20,10 +20,33 @@ describe("config cache", () => {
 		expect(getConfigCache()).toEqual(entry);
 	});
 
+	it("returns an isolated snapshot to callers", () => {
+		setConfigCache({ data: { agents: [{ id: "main" }] }, ts: 1 });
+		const cached = getConfigCache();
+		expect(cached).not.toBeNull();
+		cached?.data.agents.push({ id: "helper" });
+
+		expect(getConfigCache()).toEqual({
+			data: { agents: [{ id: "main" }] },
+			ts: 1,
+		});
+	});
+
 	it("overwrites the previous cache entry", () => {
 		setConfigCache({ data: { first: true }, ts: 1 });
 		setConfigCache({ data: { second: true }, ts: 2 });
 		expect(getConfigCache()).toEqual({ data: { second: true }, ts: 2 });
+	});
+
+	it("stores a defensive copy of the provided entry", () => {
+		const entry = { data: { flags: { safe: true } }, ts: 1 };
+		setConfigCache(entry);
+		entry.data.flags.safe = false;
+
+		expect(getConfigCache()).toEqual({
+			data: { flags: { safe: true } },
+			ts: 1,
+		});
 	});
 
 	it("clears the cache", () => {

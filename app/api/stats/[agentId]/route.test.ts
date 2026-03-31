@@ -26,7 +26,7 @@ describe("GET /api/stats/[agentId]", () => {
 	});
 
 	it("rejects invalid agent ids before reading the sessions directory", async () => {
-		const readdirSpy = vi.spyOn(fs, "readdirSync");
+		const readdirSpy = vi.spyOn(fs.promises, "readdir");
 		const route = await import("./route");
 		const response = await route.GET(
 			new Request("http://localhost/api/stats/../evil"),
@@ -95,5 +95,32 @@ describe("GET /api/stats/[agentId]", () => {
 		});
 		expect(body.weekly).toHaveLength(1);
 		expect(body.monthly).toHaveLength(1);
+	});
+
+	it("returns a sanitized failure when a session file exceeds the read budget", async () => {
+		const sessionsDir = path.join(
+			tempOpenclawHome,
+			"agents",
+			"main",
+			"sessions",
+		);
+		fs.mkdirSync(sessionsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(sessionsDir, "oversize.jsonl"),
+			"x".repeat(1_048_577),
+		);
+
+		const route = await import("./route");
+		const response = await route.GET(
+			new Request("http://localhost/api/stats/main"),
+			{
+				params: Promise.resolve({ agentId: "main" }),
+			},
+		);
+
+		expect(response.status).toBe(500);
+		await expect(response.json()).resolves.toEqual({
+			error: "Unable to load stats",
+		});
 	});
 });

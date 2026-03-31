@@ -7,12 +7,17 @@ import {
 	buildGatewayHomeLaunchPath,
 	buildGatewayPlatformLaunchPath,
 } from "@/lib/gateway-launch";
-import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import {
+	resolveOpenclawAgentConfigDir,
+	resolveOpenclawAgentSessionsDir,
+	resolveOpenclawAgentSessionsFile,
+	resolveOpenclawAgentsDirOrThrow,
+	resolveOpenclawConfigFileOrThrow,
+	resolveOpenclawHomeOrThrow,
+	resolveOpenclawRuntimeOverridePath,
+	resolveOpenclawRuntimePath,
+} from "@/lib/openclaw-paths";
 import { shouldHidePlatformChannel } from "@/lib/platforms";
-
-// Config path: prefer OPENCLAW_HOME, otherwise default to ~/.openclaw.
-const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
-const OPENCLAW_DIR = OPENCLAW_HOME;
 
 const CACHE_TTL_MS = 30_000;
 
@@ -28,7 +33,10 @@ interface SessionStatus {
 	weeklyTokens: number[]; // Token usage for each of the past 7 days.
 }
 
-function getAgentSessionStatus(agentId: string): SessionStatus {
+function getAgentSessionStatus(
+	agentId: string,
+	openclawHome: string,
+): SessionStatus {
 	const result: SessionStatus = {
 		lastActive: null,
 		totalTokens: 0,
@@ -39,7 +47,8 @@ function getAgentSessionStatus(agentId: string): SessionStatus {
 		weeklyResponseMs: [],
 		weeklyTokens: [],
 	};
-	const sessionsDir = path.join(OPENCLAW_DIR, `agents/${agentId}/sessions`);
+	const sessionsDir = resolveOpenclawAgentSessionsDir(agentId, openclawHome);
+	if (!sessionsDir) return result;
 
 	const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
@@ -293,17 +302,33 @@ function getChannelDirectPeerIds(
 // Read the bot name from IDENTITY.md.
 function readIdentityName(
 	agentId: string,
+	openclawHome: string,
 	agentDir?: string,
 	workspace?: string,
 ): string | null {
+	const agentConfigDir = resolveOpenclawAgentConfigDir(agentId, openclawHome);
 	const candidates = [
-		agentDir ? path.join(agentDir, "IDENTITY.md") : null,
-		workspace ? path.join(workspace, "IDENTITY.md") : null,
-		path.join(OPENCLAW_DIR, `agents/${agentId}/agent/IDENTITY.md`),
-		path.join(OPENCLAW_DIR, `workspace-${agentId}/IDENTITY.md`),
+		agentDir
+			? resolveOpenclawRuntimeOverridePath(
+					path.join(agentDir, "IDENTITY.md"),
+					openclawHome,
+				)
+			: null,
+		workspace
+			? resolveOpenclawRuntimeOverridePath(
+					path.join(workspace, "IDENTITY.md"),
+					openclawHome,
+				)
+			: null,
+		agentConfigDir ? path.join(agentConfigDir, "IDENTITY.md") : null,
+		resolveOpenclawRuntimePath(
+			openclawHome,
+			`workspace-${agentId}`,
+			"IDENTITY.md",
+		),
 		// Only the main agent falls back to the default workspace.
 		agentId === "main"
-			? path.join(OPENCLAW_DIR, `workspace/IDENTITY.md`)
+			? resolveOpenclawRuntimePath(openclawHome, "workspace", "IDENTITY.md")
 			: null,
 	].filter(Boolean) as string[];
 
@@ -328,8 +353,20 @@ export async function GET() {
 	}
 
 	try {
-		const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
-		const config = JSON.parse(raw);
+		const openclawHome = resolveOpenclawHomeOrThrow();
+		const configPath = resolveOpenclawConfigFileOrThrow(openclawHome);
+		let config: any = {};
+		try {
+			const raw = fs.readFileSync(configPath, "utf-8");
+			config = JSON.parse(raw);
+		} catch (error) {
+			if (
+				!(error instanceof SyntaxError) &&
+				(error as NodeJS.ErrnoException)?.code !== "ENOENT"
+			) {
+				throw error;
+			}
+		}
 
 		// Extract agent information.
 		const defaults = config.agents?.defaults || {};
@@ -370,7 +407,7 @@ export async function GET() {
 		// Auto-discover agents from ~/.openclaw/agents/ when agents.list is empty
 		if (agentList.length === 0) {
 			try {
-				const agentsDir = path.join(OPENCLAW_DIR, "agents");
+				const agentsDir = resolveOpenclawAgentsDirOrThrow(openclawHome);
 				const dirs = fs.readdirSync(agentsDir, { withFileTypes: true });
 				agentList = dirs
 					.filter((d) => d.isDirectory() && !d.name.startsWith("."))
@@ -387,10 +424,11 @@ export async function GET() {
 		const sessionsMap = new Map<string, any>();
 		for (const agentId of agentIds) {
 			try {
-				const sessionsPath = path.join(
-					OPENCLAW_DIR,
-					`agents/${agentId}/sessions/sessions.json`,
+				const sessionsPath = resolveOpenclawAgentSessionsFile(
+					agentId,
+					openclawHome,
 				);
+				if (!sessionsPath) continue;
 				const raw = fs.readFileSync(sessionsPath, "utf-8");
 				sessionsMap.set(agentId, JSON.parse(raw));
 			} catch {}
@@ -439,6 +477,7 @@ export async function GET() {
 				const id = agent.id;
 				const identityName = readIdentityName(
 					id,
+					openclawHome,
 					agent.agentDir,
 					agent.workspace,
 				);
@@ -574,7 +613,7 @@ export async function GET() {
 		// Attach session stats to each agent.
 		const agentsWithStatus = agents.map((agent: any) => ({
 			...agent,
-			session: getAgentSessionStatus(agent.id),
+			session: getAgentSessionStatus(agent.id, openclawHome),
 		}));
 
 		// Build a lookup map for group-chat rendering.
@@ -726,7 +765,10 @@ export async function GET() {
 		};
 		setConfigCache({ data, ts: Date.now() });
 		return NextResponse.json(data);
-	} catch (err: any) {
-		return NextResponse.json({ error: err.message }, { status: 500 });
+	} catch {
+		return NextResponse.json(
+			{ error: "Configuration unavailable" },
+			{ status: 500 },
+		);
 	}
 }

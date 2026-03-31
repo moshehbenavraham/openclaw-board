@@ -3,6 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const renameSpy = vi.fn();
+
+vi.mock("node:fs/promises", async () => {
+	const actual =
+		await vi.importActual<typeof import("node:fs/promises")>(
+			"node:fs/promises",
+		);
+	renameSpy.mockImplementation(actual.rename);
+	return {
+		...actual,
+		rename: renameSpy,
+	};
+});
+
 const ORIGINAL_ENV = { ...process.env };
 
 function withLocalOrigin(
@@ -73,6 +87,7 @@ describe("/api/alerts", () => {
 
 	beforeEach(() => {
 		vi.resetModules();
+		renameSpy.mockClear();
 		tempOpenclawHome = fs.mkdtempSync(
 			path.join(os.tmpdir(), "kroxboard-alerts-route-"),
 		);
@@ -153,6 +168,48 @@ describe("/api/alerts", () => {
 			const body = await response.json();
 			expect(body.enabled).toBe(true);
 			expect(body.receiveAgent).toBe("helper");
+		});
+
+		it("returns a sanitized failure and cleans temp files when atomic persistence fails", async () => {
+			const cookie = await makeAuthCookie(process.env);
+			const configPath = path.join(tempOpenclawHome, "alerts.json");
+			const originalConfig = {
+				enabled: false,
+				receiveAgent: "main",
+				checkInterval: 10,
+				rules: [],
+				lastAlerts: {},
+			};
+			fs.writeFileSync(configPath, JSON.stringify(originalConfig, null, 2));
+			renameSpy.mockRejectedValueOnce(new Error("rename failed"));
+
+			const route = await import("./route");
+			const response = await route.POST(
+				new Request("http://localhost:3000/api/alerts", {
+					method: "POST",
+					headers: withLocalOrigin({
+						"Content-Type": "application/json",
+						cookie,
+					}),
+					body: JSON.stringify({ enabled: true }),
+				}),
+			);
+
+			expect(response.status).toBe(500);
+			await expect(response.json()).resolves.toEqual({
+				error: "Alert configuration update failed",
+			});
+			expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual(
+				originalConfig,
+			);
+			expect(
+				fs
+					.readdirSync(tempOpenclawHome)
+					.filter(
+						(entry) =>
+							entry.startsWith(".alerts.json.") && entry.endsWith(".tmp"),
+					),
+			).toEqual([]);
 		});
 
 		it("rejects cross-origin alert writes before updating config", async () => {

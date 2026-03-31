@@ -6,12 +6,16 @@ import {
 	getOpenclawPackageCandidates,
 	isPathWithinBoundary,
 	isValidOpenclawAgentId,
+	resolveConfiguredOpenclawHome,
 	resolveOpenclawAgentConfigDir,
 	resolveOpenclawAgentModelsFile,
 	resolveOpenclawAgentSessionsDir,
 	resolveOpenclawAgentSessionsFile,
+	resolveOpenclawAlertsConfigFile,
 	resolveOpenclawConfigFile,
+	resolveOpenclawConfigFileOrThrow,
 	resolveOpenclawCronStorePath,
+	resolveOpenclawCronStorePathOrThrow,
 	resolveOpenclawRuntimePath,
 } from "@/lib/openclaw-paths";
 
@@ -78,6 +82,9 @@ describe("openclaw path boundaries", () => {
 		expect(resolveOpenclawConfigFile(openclawHome)).toBe(
 			path.resolve(openclawHome, "openclaw.json"),
 		);
+		expect(resolveOpenclawAlertsConfigFile(openclawHome)).toBe(
+			path.resolve(openclawHome, "alerts.json"),
+		);
 		expect(resolveOpenclawAgentConfigDir("main", openclawHome)).toBe(
 			path.resolve(openclawHome, "agents", "main", "agent"),
 		);
@@ -105,6 +112,14 @@ describe("openclaw path boundaries", () => {
 			),
 		).toBeNull();
 		expect(resolveOpenclawAgentModelsFile("../main", openclawHome)).toBeNull();
+	});
+
+	it("rejects invalid root assumptions before building runtime file paths", () => {
+		expect(resolveConfiguredOpenclawHome("relative/openclaw-home")).toBeNull();
+		expect(resolveOpenclawConfigFile("relative/openclaw-home")).toBeNull();
+		expect(() =>
+			resolveOpenclawConfigFileOrThrow("relative/openclaw-home"),
+		).toThrowError("OpenClaw runtime config path is invalid");
 	});
 
 	it("checks whether a path stays inside its approved boundary", () => {
@@ -144,6 +159,9 @@ describe("openclaw path boundaries", () => {
 		expect(
 			resolveOpenclawCronStorePath("/tmp/jobs.json", openclawHome),
 		).toBeNull();
+		expect(() =>
+			resolveOpenclawCronStorePathOrThrow("../secrets/jobs.json", openclawHome),
+		).toThrowError("OpenClaw cron store path is invalid");
 	});
 
 	it("uses the legacy cron-store default when only the legacy file exists", () => {

@@ -1,16 +1,31 @@
-type ConfigCacheEntry = {
-	data: any;
+export type ConfigCacheEntry<T = unknown> = {
+	data: T;
 	ts: number;
 };
 
 let configCache: ConfigCacheEntry | null = null;
 
-export function getConfigCache(): ConfigCacheEntry | null {
-	return configCache;
+function cloneConfigCacheData<T>(value: T): T {
+	return structuredClone(value);
 }
 
-export function setConfigCache(entry: ConfigCacheEntry): void {
-	configCache = entry;
+function cloneConfigCacheEntry<T>(
+	entry: ConfigCacheEntry<T>,
+): ConfigCacheEntry<T> {
+	return {
+		data: cloneConfigCacheData(entry.data),
+		ts: entry.ts,
+	};
+}
+
+export function getConfigCache<T = unknown>(): ConfigCacheEntry<T> | null {
+	return configCache
+		? cloneConfigCacheEntry(configCache as ConfigCacheEntry<T>)
+		: null;
+}
+
+export function setConfigCache<T = unknown>(entry: ConfigCacheEntry<T>): void {
+	configCache = cloneConfigCacheEntry(entry);
 }
 
 export function clearConfigCache(): void {

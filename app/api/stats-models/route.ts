@@ -1,11 +1,17 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import {
+	getCachedComputation,
+	listBoundedDirectory,
+	readBoundedTextFile,
+} from "@/lib/openclaw-read-paths";
 
-// 30-second in-memory cache.
-let statsCache: { data: unknown; ts: number } | null = null;
+const CACHE_KEY = "stats-models";
 const CACHE_TTL_MS = 30_000;
+const MAX_AGENT_COUNT = 128;
+const MAX_SESSION_FILES_PER_AGENT = 256;
+const MAX_SESSION_FILE_BYTES = 1_048_576;
 
 interface ModelStat {
 	modelId: string;
@@ -21,173 +27,182 @@ interface InternalModelStat extends ModelStat {
 	responseTimes: number[];
 }
 
-export async function GET() {
-	// Return cached data when available.
-	if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
-		return NextResponse.json(statsCache.data);
-	}
+interface ParsedModelMessage {
+	model?: string;
+	provider: string;
+	role: string;
+	stopReason?: string;
+	timestamp: string;
+	usage?: {
+		input?: number;
+		output?: number;
+		totalTokens?: number;
+	};
+}
 
-	try {
-		const agentsDir = path.join(OPENCLAW_HOME, "agents");
-		let agentIds: string[];
-		try {
-			agentIds = fs
-				.readdirSync(agentsDir)
-				.filter((f) => fs.statSync(path.join(agentsDir, f)).isDirectory());
-		} catch {
-			agentIds = [];
-		}
+async function buildModelStatsPayload(): Promise<{ models: ModelStat[] }> {
+	const agentsDir = path.join(OPENCLAW_HOME, "agents");
+	const agentIds = await listBoundedDirectory(agentsDir, {
+		allowMissing: true,
+		filter: (entry) => entry.isDirectory(),
+		maxEntries: MAX_AGENT_COUNT,
+	});
 
-		const modelMap: Record<string, InternalModelStat> = {};
+	const modelMap: Record<string, InternalModelStat> = {};
 
-		// Process all agents in parallel.
-		await Promise.all(
-			agentIds.map(async (agentId) => {
-				const sessionsDir = path.join(agentsDir, agentId, "sessions");
-				let fileNames: string[];
-				try {
-					fileNames = (await fs.promises.readdir(sessionsDir)).filter(
-						(f) => f.endsWith(".jsonl") && !f.includes(".deleted."),
-					);
-				} catch {
-					return;
-				}
+	await Promise.all(
+		agentIds.map(async (agentId) => {
+			const sessionsDir = path.join(agentsDir, agentId, "sessions");
+			const fileNames = await listBoundedDirectory(sessionsDir, {
+				allowMissing: true,
+				filter: (entry) =>
+					entry.isFile() &&
+					entry.name.endsWith(".jsonl") &&
+					!entry.name.includes(".deleted."),
+				maxEntries: MAX_SESSION_FILES_PER_AGENT,
+			});
 
-				// Read all JSONL files in parallel.
-				const fileContents = await Promise.all(
-					fileNames.map(async (file) => {
-						try {
-							return await fs.promises.readFile(
-								path.join(sessionsDir, file),
-								"utf-8",
-							);
-						} catch {
-							return null;
-						}
-					}),
+			for (const fileName of fileNames) {
+				const content = await readBoundedTextFile(
+					path.join(sessionsDir, fileName),
+					{
+						allowMissing: true,
+						maxBytes: MAX_SESSION_FILE_BYTES,
+					},
 				);
+				if (!content) {
+					continue;
+				}
 
-				for (const content of fileContents) {
-					if (!content) continue;
+				const messages: ParsedModelMessage[] = [];
+				for (const line of content.split("\n")) {
+					if (!line.trim()) continue;
 
-					const lines = content.trim().split("\n");
-
-					for (const line of lines) {
-						let entry: {
-							type?: string;
-							message?: {
-								role?: string;
-								stopReason?: string;
-								usage?: {
-									input?: number;
-									output?: number;
-									totalTokens?: number;
-								};
-								model?: string;
-								provider?: string;
+					let entry: {
+						type?: string;
+						message?: {
+							role?: string;
+							stopReason?: string;
+							usage?: {
+								input?: number;
+								output?: number;
+								totalTokens?: number;
 							};
-							timestamp?: string;
+							model?: string;
+							provider?: string;
 						};
-						try {
-							entry = JSON.parse(line);
-						} catch {
-							continue;
-						}
-						if (entry.type !== "message") continue;
-						const msg = entry.message;
-						if (!msg || !entry.timestamp) continue;
-
-						if (msg.role === "assistant" && msg.usage && msg.model) {
-							const key = `${msg.provider || "unknown"}/${msg.model}`;
-							if (!modelMap[key]) {
-								modelMap[key] = {
-									modelId: msg.model,
-									provider: msg.provider || "unknown",
-									inputTokens: 0,
-									outputTokens: 0,
-									totalTokens: 0,
-									messageCount: 0,
-									avgResponseMs: 0,
-									responseTimes: [],
-								};
-							}
-							const m = modelMap[key];
-							m.inputTokens += msg.usage.input || 0;
-							m.outputTokens += msg.usage.output || 0;
-							m.totalTokens += msg.usage.totalTokens || 0;
-							m.messageCount += 1;
-						}
+						timestamp?: string;
+					};
+					try {
+						entry = JSON.parse(line);
+					} catch {
+						continue;
+					}
+					if (entry.type !== "message" || !entry.message || !entry.timestamp) {
+						continue;
 					}
 
-					// O(n) response-time calculation.
-					let lastUserTs: string | null = null;
-					for (const line of lines) {
-						let entry: {
-							type?: string;
-							message?: {
-								role?: string;
-								stopReason?: string;
-								usage?: {
-									input?: number;
-									output?: number;
-									totalTokens?: number;
-								};
-								model?: string;
-								provider?: string;
+					const message = entry.message;
+					if (!message.role) {
+						continue;
+					}
+
+					messages.push({
+						role: message.role,
+						stopReason: message.stopReason,
+						usage: message.usage,
+						model: message.model,
+						provider: message.provider || "unknown",
+						timestamp: entry.timestamp,
+					});
+				}
+
+				for (const message of messages) {
+					if (message.role === "assistant" && message.usage && message.model) {
+						const key = `${message.provider}/${message.model}`;
+						if (!modelMap[key]) {
+							modelMap[key] = {
+								modelId: message.model,
+								provider: message.provider,
+								inputTokens: 0,
+								outputTokens: 0,
+								totalTokens: 0,
+								messageCount: 0,
+								avgResponseMs: 0,
+								responseTimes: [],
 							};
-							timestamp?: string;
-						};
-						try {
-							entry = JSON.parse(line);
-						} catch {
-							continue;
 						}
-						if (entry.type !== "message" || !entry.message || !entry.timestamp)
-							continue;
-						const msg = entry.message;
-						if (msg.role === "user") {
-							lastUserTs = entry.timestamp;
-						} else if (
-							msg.role === "assistant" &&
-							msg.stopReason === "stop" &&
-							lastUserTs &&
-							msg.model
-						) {
-							const diffMs =
-								new Date(entry.timestamp).getTime() -
-								new Date(lastUserTs).getTime();
-							if (diffMs > 0 && diffMs < 600000) {
-								const key = `${msg.provider || "unknown"}/${msg.model}`;
-								if (modelMap[key]) {
-									modelMap[key].responseTimes.push(diffMs);
-								}
-							}
-							lastUserTs = null;
-						}
+						const modelStats = modelMap[key];
+						modelStats.inputTokens += message.usage.input || 0;
+						modelStats.outputTokens += message.usage.output || 0;
+						modelStats.totalTokens += message.usage.totalTokens || 0;
+						modelStats.messageCount += 1;
 					}
 				}
-			}),
-		);
 
-		const models: ModelStat[] = Object.values(modelMap).map(
-			({ responseTimes, ...rest }) => {
-				if (responseTimes.length > 0) {
-					rest.avgResponseMs = Math.round(
-						responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length,
-					);
+				let lastUserTimestamp: string | null = null;
+				for (const message of messages) {
+					if (message.role === "user") {
+						lastUserTimestamp = message.timestamp;
+						continue;
+					}
+					if (
+						message.role === "assistant" &&
+						message.stopReason === "stop" &&
+						lastUserTimestamp &&
+						message.model
+					) {
+						const diffMs =
+							new Date(message.timestamp).getTime() -
+							new Date(lastUserTimestamp).getTime();
+						if (diffMs > 0 && diffMs < 600000) {
+							const key = `${message.provider}/${message.model}`;
+							if (modelMap[key]) {
+								modelMap[key].responseTimes.push(diffMs);
+							}
+						}
+						lastUserTimestamp = null;
+					}
 				}
-				return rest;
-			},
-		);
+			}
+		}),
+	);
 
-		models.sort((a, b) => b.totalTokens - a.totalTokens);
+	const models = Object.values(modelMap)
+		.map(({ responseTimes, ...rest }) => {
+			if (responseTimes.length > 0) {
+				rest.avgResponseMs = Math.round(
+					responseTimes.reduce((sum, value) => sum + value, 0) /
+						responseTimes.length,
+				);
+			}
+			return rest;
+		})
+		.sort((a, b) => {
+			if (b.totalTokens !== a.totalTokens) {
+				return b.totalTokens - a.totalTokens;
+			}
+			const providerCompare = a.provider.localeCompare(b.provider);
+			if (providerCompare !== 0) {
+				return providerCompare;
+			}
+			return a.modelId.localeCompare(b.modelId);
+		});
 
-		const data = { models };
-		statsCache = { data, ts: Date.now() };
+	return { models };
+}
+
+export async function GET() {
+	try {
+		const data = await getCachedComputation(CACHE_KEY, {
+			ttlMs: CACHE_TTL_MS,
+			load: buildModelStatsPayload,
+		});
 		return NextResponse.json(data);
-	} catch (err: unknown) {
+	} catch (error: unknown) {
+		console.error("[stats-models] failed", error);
 		return NextResponse.json(
-			{ error: err instanceof Error ? err.message : String(err) },
+			{ error: "Unable to load model stats" },
 			{ status: 500 },
 		);
 	}

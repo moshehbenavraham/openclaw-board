@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import { loadAlertConfig, updateAlertConfig } from "@/lib/alert-config";
 import { requireFeatureFlag } from "@/lib/security/feature-flags";
 import {
 	getInvalidRequestStatus,
@@ -13,79 +11,7 @@ import {
 } from "@/lib/security/request-boundary";
 import { requireSensitiveMutationAccess } from "@/lib/security/sensitive-mutation";
 
-const ALERTS_CONFIG_PATH = path.join(OPENCLAW_HOME, "alerts.json");
-const CRON_RULE_ID = "cron_continuous_failure";
 const ALERT_WRITE_BODY_MAX_BYTES = 4096;
-
-interface AlertRule {
-	id: string;
-	name: string;
-	enabled: boolean;
-	threshold?: number; // Threshold config.
-	targetAgents?: string[]; // Specific agents to monitor.
-}
-
-interface AlertConfig {
-	enabled: boolean;
-	receiveAgent: string; // Agent ID that receives alerts.
-	checkInterval: number; // Check interval in minutes.
-	rules: AlertRule[];
-	lastAlerts?: Record<string, number>; // Last alert timestamps.
-}
-
-const DEFAULT_RULES: AlertRule[] = [
-	{ id: "model_unavailable", name: "Model Unavailable", enabled: false },
-	{
-		id: "bot_no_response",
-		name: "Bot Long Time No Response",
-		enabled: false,
-		threshold: 300,
-	}, // No response for 5 minutes.
-	{
-		id: "message_failure_rate",
-		name: "Message Failure Rate High",
-		enabled: false,
-		threshold: 50,
-	}, // Failure rate exceeds 50%.
-	{
-		id: CRON_RULE_ID,
-		name: "Cron Continuous Failure",
-		enabled: false,
-		threshold: 3,
-	}, // Three consecutive failures.
-];
-
-function getAlertConfig(): AlertConfig {
-	try {
-		if (fs.existsSync(ALERTS_CONFIG_PATH)) {
-			const raw = fs.readFileSync(ALERTS_CONFIG_PATH, "utf-8");
-			const parsed = JSON.parse(raw);
-			if (Array.isArray(parsed?.rules)) {
-				for (const rule of parsed.rules) {
-					if (rule?.id === "cron\u8fde\u7eed_failure") {
-						rule.id = CRON_RULE_ID;
-					}
-				}
-			}
-			return parsed;
-		}
-	} catch {}
-	return {
-		enabled: false,
-		receiveAgent: "main",
-		checkInterval: 10,
-		rules: DEFAULT_RULES,
-		lastAlerts: {},
-	};
-}
-
-function saveAlertConfig(config: AlertConfig): void {
-	const dir = path.dirname(ALERTS_CONFIG_PATH);
-	if (!fs.existsSync(dir)) {
-		fs.mkdirSync(dir, { recursive: true });
-	}
-	fs.writeFileSync(ALERTS_CONFIG_PATH, JSON.stringify(config, null, 2));
-}
 
 async function handleAlertWrite(request: Request): Promise<NextResponse> {
 	const access = requireSensitiveMutationAccess(request, {
@@ -111,19 +37,23 @@ async function handleAlertWrite(request: Request): Promise<NextResponse> {
 		if (!update.ok) {
 			return createInvalidRequestResponse(update.error);
 		}
-		const config = getAlertConfig();
 
-		if (update.value.enabled !== undefined)
-			config.enabled = update.value.enabled;
-		if (update.value.receiveAgent)
-			config.receiveAgent = update.value.receiveAgent;
-		if (update.value.checkInterval !== undefined) {
-			config.checkInterval = update.value.checkInterval;
-		}
-		if (update.value.rules) {
-			for (const newRule of update.value.rules) {
-				const existingRule = config.rules.find((r) => r.id === newRule.id);
-				if (existingRule) {
+		const config = await updateAlertConfig((draft) => {
+			if (update.value.enabled !== undefined) {
+				draft.enabled = update.value.enabled;
+			}
+			if (update.value.receiveAgent) {
+				draft.receiveAgent = update.value.receiveAgent;
+			}
+			if (update.value.checkInterval !== undefined) {
+				draft.checkInterval = update.value.checkInterval;
+			}
+			if (update.value.rules) {
+				for (const newRule of update.value.rules) {
+					const existingRule = draft.rules.find(
+						(rule) => rule.id === newRule.id,
+					);
+					if (!existingRule) continue;
 					if (newRule.enabled !== undefined) {
 						existingRule.enabled = newRule.enabled;
 					}
@@ -135,9 +65,8 @@ async function handleAlertWrite(request: Request): Promise<NextResponse> {
 					}
 				}
 			}
-		}
+		});
 
-		saveAlertConfig(config);
 		return NextResponse.json(config);
 	} catch {
 		return NextResponse.json(
@@ -149,11 +78,11 @@ async function handleAlertWrite(request: Request): Promise<NextResponse> {
 
 export async function GET() {
 	try {
-		const config = getAlertConfig();
+		const config = await loadAlertConfig();
 		return NextResponse.json(config);
-	} catch (err: unknown) {
+	} catch {
 		return NextResponse.json(
-			{ error: err instanceof Error ? err.message : String(err) },
+			{ error: "Alert configuration unavailable" },
 			{ status: 500 },
 		);
 	}

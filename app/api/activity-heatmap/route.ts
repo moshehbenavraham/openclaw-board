@@ -1,29 +1,31 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import {
+	getCachedComputation,
+	listBoundedDirectory,
+	readBoundedTextFile,
+} from "@/lib/openclaw-read-paths";
 import {
 	applyDiagnosticRateLimitHeaders,
 	enforceDiagnosticRateLimit,
 } from "@/lib/security/diagnostic-rate-limit";
 
-// Server-side cache: 5 min TTL
-let cache: {
-	data: { agents: { agentId: string; grid: number[][] }[] };
-	ts: number;
-} | null = null;
+const CACHE_KEY = "activity-heatmap";
 const CACHE_TTL = 5 * 60 * 1000;
+const MAX_AGENT_COUNT = 128;
+const MAX_SESSION_FILES_PER_AGENT = 256;
+const MAX_SESSION_FILE_BYTES = 1_048_576;
 
-function buildHeatmapData() {
+async function buildHeatmapData(): Promise<{
+	agents: { agentId: string; grid: number[][] }[];
+}> {
 	const agentsDir = path.join(OPENCLAW_HOME, "agents");
-	let agentIds: string[];
-	try {
-		agentIds = fs
-			.readdirSync(agentsDir)
-			.filter((f) => fs.statSync(path.join(agentsDir, f)).isDirectory());
-	} catch {
-		agentIds = [];
-	}
+	const agentIds = await listBoundedDirectory(agentsDir, {
+		allowMissing: true,
+		filter: (entry) => entry.isDirectory(),
+		maxEntries: MAX_AGENT_COUNT,
+	});
 
 	const result: { agentId: string; grid: number[][] }[] = [];
 
@@ -32,24 +34,27 @@ function buildHeatmapData() {
 			new Array(24).fill(0),
 		);
 		const sessionsDir = path.join(agentsDir, agentId, "sessions");
-		let files: string[];
-		try {
-			files = fs
-				.readdirSync(sessionsDir)
-				.filter((f) => f.endsWith(".jsonl") && !f.includes(".deleted."));
-		} catch {
-			continue;
-		}
+		const files = await listBoundedDirectory(sessionsDir, {
+			allowMissing: true,
+			filter: (entry) =>
+				entry.isFile() &&
+				entry.name.endsWith(".jsonl") &&
+				!entry.name.includes(".deleted."),
+			maxEntries: MAX_SESSION_FILES_PER_AGENT,
+		});
 
 		for (const file of files) {
-			let content: string;
-			try {
-				content = fs.readFileSync(path.join(sessionsDir, file), "utf-8");
-			} catch {
+			const content = await readBoundedTextFile(path.join(sessionsDir, file), {
+				allowMissing: true,
+				maxBytes: MAX_SESSION_FILE_BYTES,
+			});
+			if (!content) {
 				continue;
 			}
 
-			for (const line of content.trim().split("\n")) {
+			for (const line of content.split("\n")) {
+				if (!line.trim()) continue;
+
 				let entry: {
 					type?: string;
 					message?: { role?: string };
@@ -91,20 +96,16 @@ export async function GET(request: Request) {
 	if (!rateLimit.ok) return rateLimit.response;
 
 	try {
-		if (cache && Date.now() - cache.ts < CACHE_TTL) {
-			return applyDiagnosticRateLimitHeaders(
-				NextResponse.json(cache.data),
-				rateLimit.metadata,
-			);
-		}
-		const data = buildHeatmapData();
-		cache = { data, ts: Date.now() };
+		const data = await getCachedComputation(CACHE_KEY, {
+			ttlMs: CACHE_TTL,
+			load: buildHeatmapData,
+		});
 		return applyDiagnosticRateLimitHeaders(
 			NextResponse.json(data),
 			rateLimit.metadata,
 		);
-	} catch (err: unknown) {
-		console.error("[activity-heatmap] failed", err);
+	} catch (error: unknown) {
+		console.error("[activity-heatmap] failed", error);
 		return applyDiagnosticRateLimitHeaders(
 			NextResponse.json(
 				{ error: "Activity heatmap generation failed" },

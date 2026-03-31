@@ -49,9 +49,18 @@ export async function testSessionViaCli(
 			stderr || "",
 			"CLI fallback returned malformed OpenClaw output",
 		);
-		const error = parsed?.error?.message || parsed?.error;
-		if (typeof error === "string" && error.trim()) {
-			return { ok: false, error: error.trim().slice(0, 300), elapsed };
+		const parsedError = parsed.error;
+		const errorMessage =
+			typeof parsedError === "string"
+				? parsedError
+				: parsedError &&
+						typeof parsedError === "object" &&
+						"message" in parsedError &&
+						typeof parsedError.message === "string"
+					? parsedError.message
+					: undefined;
+		if (typeof errorMessage === "string" && errorMessage.trim()) {
+			return { ok: false, error: errorMessage.trim().slice(0, 300), elapsed };
 		}
 		return { ok: true, reply: extractCliReply(parsed, stdout), elapsed };
 	} catch (err: unknown) {

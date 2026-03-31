@@ -1,15 +1,21 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import {
+	getCachedComputation,
+	listBoundedDirectory,
+	readBoundedTextFile,
+} from "@/lib/openclaw-read-paths";
 import {
 	applyDiagnosticRateLimitHeaders,
 	enforceDiagnosticRateLimit,
 } from "@/lib/security/diagnostic-rate-limit";
 
-// 30-second in-memory cache.
-let statsCache: { data: unknown; ts: number } | null = null;
+const CACHE_KEY = "stats-all";
 const CACHE_TTL_MS = 30_000;
+const MAX_AGENT_COUNT = 128;
+const MAX_SESSION_FILES_PER_AGENT = 256;
+const MAX_SESSION_FILE_BYTES = 1_048_576;
 
 interface DayStat {
 	date: string;
@@ -28,36 +34,31 @@ async function parseAgentSessions(agentId: string): Promise<InternalDayStat[]> {
 	const sessionsDir = path.join(OPENCLAW_HOME, `agents/${agentId}/sessions`);
 	const dayMap: Record<string, InternalDayStat> = {};
 
-	let fileNames: string[];
-	try {
-		fileNames = (await fs.promises.readdir(sessionsDir)).filter(
-			(f) => f.endsWith(".jsonl") && !f.includes(".deleted."),
+	const fileNames = await listBoundedDirectory(sessionsDir, {
+		allowMissing: true,
+		filter: (entry) =>
+			entry.isFile() &&
+			entry.name.endsWith(".jsonl") &&
+			!entry.name.includes(".deleted."),
+		maxEntries: MAX_SESSION_FILES_PER_AGENT,
+	});
+
+	for (const fileName of fileNames) {
+		const content = await readBoundedTextFile(
+			path.join(sessionsDir, fileName),
+			{
+				allowMissing: true,
+				maxBytes: MAX_SESSION_FILE_BYTES,
+			},
 		);
-	} catch {
-		return [];
-	}
-
-	// Read all JSONL files in parallel.
-	const fileContents = await Promise.all(
-		fileNames.map(async (file) => {
-			try {
-				return await fs.promises.readFile(
-					path.join(sessionsDir, file),
-					"utf-8",
-				);
-			} catch {
-				return null;
-			}
-		}),
-	);
-
-	for (const content of fileContents) {
 		if (!content) continue;
 
-		const lines = content.trim().split("\n");
+		const lines = content.split("\n");
 		const messages: { role: string; ts: string; stopReason?: string }[] = [];
 
 		for (const line of lines) {
+			if (!line.trim()) continue;
+
 			let entry: {
 				type?: string;
 				message?: {
@@ -133,7 +134,10 @@ async function parseAgentSessions(agentId: string): Promise<InternalDayStat[]> {
 	return Object.values(dayMap);
 }
 
-function aggregateToWeeklyMonthly(daily: DayStat[]) {
+function aggregateToWeeklyMonthly(daily: DayStat[]): {
+	monthly: DayStat[];
+	weekly: DayStat[];
+} {
 	const weekMap: Record<string, DayStat> = {};
 	const monthMap: Record<string, DayStat> = {};
 
@@ -182,78 +186,76 @@ function aggregateToWeeklyMonthly(daily: DayStat[]) {
 	};
 }
 
+async function buildStatsPayload(): Promise<{
+	daily: DayStat[];
+	monthly: DayStat[];
+	weekly: DayStat[];
+}> {
+	const agentsDir = path.join(OPENCLAW_HOME, "agents");
+	const agentIds = await listBoundedDirectory(agentsDir, {
+		allowMissing: true,
+		filter: (entry) => entry.isDirectory(),
+		maxEntries: MAX_AGENT_COUNT,
+	});
+
+	const allAgentDays = await Promise.all(
+		agentIds.map((agentId) => parseAgentSessions(agentId)),
+	);
+
+	const dayMap: Record<string, InternalDayStat> = {};
+	for (const agentDays of allAgentDays) {
+		for (const agentDay of agentDays) {
+			if (!dayMap[agentDay.date]) {
+				dayMap[agentDay.date] = {
+					date: agentDay.date,
+					inputTokens: 0,
+					outputTokens: 0,
+					totalTokens: 0,
+					messageCount: 0,
+					avgResponseMs: 0,
+					responseTimes: [],
+				};
+			}
+			const day = dayMap[agentDay.date];
+			day.inputTokens += agentDay.inputTokens;
+			day.outputTokens += agentDay.outputTokens;
+			day.totalTokens += agentDay.totalTokens;
+			day.messageCount += agentDay.messageCount;
+			day.responseTimes.push(...agentDay.responseTimes);
+		}
+	}
+
+	const daily = Object.values(dayMap)
+		.sort((a, b) => a.date.localeCompare(b.date))
+		.map(({ responseTimes, ...rest }) => {
+			if (responseTimes.length > 0) {
+				rest.avgResponseMs = Math.round(
+					responseTimes.reduce((sum, value) => sum + value, 0) /
+						responseTimes.length,
+				);
+			}
+			return rest;
+		});
+	const { weekly, monthly } = aggregateToWeeklyMonthly(daily);
+
+	return { daily, weekly, monthly };
+}
+
 export async function GET(request: Request) {
 	const rateLimit = enforceDiagnosticRateLimit(request, "stats_all");
 	if (!rateLimit.ok) return rateLimit.response;
 
-	// Return cached data when available.
-	if (statsCache && Date.now() - statsCache.ts < CACHE_TTL_MS) {
-		return applyDiagnosticRateLimitHeaders(
-			NextResponse.json(statsCache.data),
-			rateLimit.metadata,
-		);
-	}
-
 	try {
-		const agentsDir = path.join(OPENCLAW_HOME, "agents");
-		let agentIds: string[];
-		try {
-			agentIds = fs
-				.readdirSync(agentsDir)
-				.filter((f) => fs.statSync(path.join(agentsDir, f)).isDirectory());
-		} catch {
-			agentIds = [];
-		}
-
-		// Process all agents in parallel.
-		const allAgentDays = await Promise.all(
-			agentIds.map((id) => parseAgentSessions(id)),
-		);
-
-		const dayMap: Record<string, InternalDayStat> = {};
-		for (const agentDays of allAgentDays) {
-			for (const ad of agentDays) {
-				if (!dayMap[ad.date]) {
-					dayMap[ad.date] = {
-						date: ad.date,
-						inputTokens: 0,
-						outputTokens: 0,
-						totalTokens: 0,
-						messageCount: 0,
-						avgResponseMs: 0,
-						responseTimes: [],
-					};
-				}
-				const d = dayMap[ad.date];
-				d.inputTokens += ad.inputTokens;
-				d.outputTokens += ad.outputTokens;
-				d.totalTokens += ad.totalTokens;
-				d.messageCount += ad.messageCount;
-				d.responseTimes.push(...ad.responseTimes);
-			}
-		}
-
-		const daily: DayStat[] = Object.values(dayMap)
-			.sort((a, b) => a.date.localeCompare(b.date))
-			.map(({ responseTimes, ...rest }) => {
-				if (responseTimes.length > 0) {
-					rest.avgResponseMs = Math.round(
-						responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length,
-					);
-				}
-				return rest;
-			});
-
-		const { weekly, monthly } = aggregateToWeeklyMonthly(daily);
-
-		const data = { daily, weekly, monthly };
-		statsCache = { data, ts: Date.now() };
+		const data = await getCachedComputation(CACHE_KEY, {
+			ttlMs: CACHE_TTL_MS,
+			load: buildStatsPayload,
+		});
 		return applyDiagnosticRateLimitHeaders(
 			NextResponse.json(data),
 			rateLimit.metadata,
 		);
-	} catch (err: unknown) {
-		console.error("[stats-all] failed", err);
+	} catch (error: unknown) {
+		console.error("[stats-all] failed", error);
 		return applyDiagnosticRateLimitHeaders(
 			NextResponse.json({ error: "Stats aggregation failed" }, { status: 500 }),
 			rateLimit.metadata,

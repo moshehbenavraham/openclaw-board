@@ -1,12 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import {
+	type AlertConfig,
+	CRON_RULE_ID,
+	LEGACY_CRON_RULE_ID,
+	loadAlertConfig,
+	updateAlertConfig,
+} from "@/lib/alert-config";
 import { probeModel } from "@/lib/model-probe";
 import {
-	OPENCLAW_CONFIG_PATH,
-	OPENCLAW_HOME,
+	resolveOpenclawAgentSessionsDir,
 	resolveOpenclawAgentSessionsFile,
-	resolveOpenclawCronStorePath,
+	resolveOpenclawAgentsDirOrThrow,
+	resolveOpenclawConfigFileOrThrow,
+	resolveOpenclawCronStorePathOrThrow,
 } from "@/lib/openclaw-paths";
 import {
 	applyDiagnosticRateLimitHeaders,
@@ -18,26 +26,6 @@ import type {
 	DiagnosticMetadata,
 	DiagnosticRateLimitMetadata,
 } from "@/lib/security/types";
-
-const ALERTS_CONFIG_PATH = path.join(OPENCLAW_HOME, "alerts.json");
-const CRON_RULE_ID = "cron_continuous_failure";
-const LEGACY_CRON_RULE_ID = "cron\u8fde\u7eed_failure";
-
-interface AlertRule {
-	id: string;
-	name: string;
-	enabled: boolean;
-	threshold?: number;
-	targetAgents?: string[];
-}
-
-interface AlertConfig {
-	enabled: boolean;
-	receiveAgent: string;
-	checkInterval: number;
-	rules: AlertRule[];
-	lastAlerts?: Record<string, number>;
-}
 
 interface AlertNotificationResult {
 	agentId: string;
@@ -64,57 +52,19 @@ interface CronStoreJob {
 	};
 }
 
-function getAlertConfig(): AlertConfig {
-	try {
-		if (fs.existsSync(ALERTS_CONFIG_PATH)) {
-			const raw = fs.readFileSync(ALERTS_CONFIG_PATH, "utf-8");
-			const parsed = JSON.parse(raw);
-			if (Array.isArray(parsed?.rules)) {
-				for (const rule of parsed.rules) {
-					if (rule?.id === LEGACY_CRON_RULE_ID) {
-						rule.id = CRON_RULE_ID;
-					}
-				}
-			}
-			return parsed;
-		}
-	} catch {}
-	return {
-		enabled: false,
-		receiveAgent: "main",
-		checkInterval: 10,
-		rules: [
-			{ id: "model_unavailable", name: "Model Unavailable", enabled: false },
-			{
-				id: "bot_no_response",
-				name: "Bot Long Time No Response",
-				enabled: false,
-				threshold: 300,
-			},
-			{
-				id: "message_failure_rate",
-				name: "Message Failure Rate High",
-				enabled: false,
-				threshold: 50,
-			},
-			{
-				id: CRON_RULE_ID,
-				name: "Cron Continuous Failure",
-				enabled: false,
-				threshold: 3,
-			},
-		],
-		lastAlerts: {},
-	};
-}
-
 function getOpenclawConfig() {
-	const configPath = OPENCLAW_CONFIG_PATH;
+	const configPath = resolveOpenclawConfigFileOrThrow();
 	try {
 		const raw = fs.readFileSync(configPath, "utf-8");
 		return JSON.parse(raw);
-	} catch {
-		return {};
+	} catch (error) {
+		if (
+			error instanceof SyntaxError ||
+			(error as NodeJS.ErrnoException)?.code === "ENOENT"
+		) {
+			return {};
+		}
+		throw error;
 	}
 }
 
@@ -123,15 +73,21 @@ function loadCronJobs(openclawConfig: any): CronStoreJob[] {
 		typeof openclawConfig?.cron?.store === "string"
 			? openclawConfig.cron.store
 			: "";
-	const storePath = resolveOpenclawCronStorePath(rawStorePath);
-	if (!storePath || !fs.existsSync(storePath)) return [];
+	const storePath = resolveOpenclawCronStorePathOrThrow(rawStorePath);
+	if (!fs.existsSync(storePath)) return [];
 
 	try {
 		const raw = fs.readFileSync(storePath, "utf-8");
 		const parsed = JSON.parse(raw);
 		return Array.isArray(parsed?.jobs) ? parsed.jobs.filter(Boolean) : [];
-	} catch {
-		return [];
+	} catch (error) {
+		if (
+			error instanceof SyntaxError ||
+			(error as NodeJS.ErrnoException)?.code === "ENOENT"
+		) {
+			return [];
+		}
+		throw error;
 	}
 }
 
@@ -139,29 +95,6 @@ function normalizeCronLabel(job: CronStoreJob): string {
 	if (typeof job.name === "string" && job.name.trim()) return job.name.trim();
 	if (typeof job.id === "string" && job.id.trim()) return job.id.trim();
 	return "unknown";
-}
-
-function saveAlertConfig(config: AlertConfig): void {
-	const dir = path.dirname(ALERTS_CONFIG_PATH);
-	if (!fs.existsSync(dir)) {
-		fs.mkdirSync(dir, { recursive: true });
-	}
-	fs.writeFileSync(ALERTS_CONFIG_PATH, JSON.stringify(config, null, 2));
-}
-
-function _getGatewayConfig() {
-	const configPath = OPENCLAW_CONFIG_PATH;
-	try {
-		const raw = fs.readFileSync(configPath, "utf-8");
-		const config = JSON.parse(raw);
-		return {
-			port: config.gateway?.port || 18789,
-			token: config.gateway?.auth?.token || "",
-			feishu: config.channels?.feishu || {},
-		};
-	} catch {
-		return { port: 18789, token: "", feishu: {} };
-	}
 }
 
 // Resolve the Feishu account config for the target agent.
@@ -501,12 +434,18 @@ async function checkBotResponseAlerts(
 	const rule = config.rules.find((r) => r.id === "bot_no_response");
 	if (!rule?.enabled) return { results, notifications };
 
-	const agentsDir = path.join(OPENCLAW_HOME, "agents");
+	const agentsDir = resolveOpenclawAgentsDirOrThrow();
 	let agentIds: string[] = [];
 	try {
-		agentIds = fs
-			.readdirSync(agentsDir)
-			.filter((f) => fs.statSync(path.join(agentsDir, f)).isDirectory());
+		agentIds = fs.readdirSync(agentsDir).filter((entry) => {
+			const sessionsDir = resolveOpenclawAgentSessionsDir(entry);
+			if (!sessionsDir) return false;
+			try {
+				return fs.statSync(sessionsDir).isDirectory();
+			} catch {
+				return false;
+			}
+		});
 	} catch {
 		return { results, notifications };
 	}
@@ -518,7 +457,8 @@ async function checkBotResponseAlerts(
 	}
 
 	for (const agentId of agentIds) {
-		const sessionsDir = path.join(agentsDir, agentId, "sessions");
+		const sessionsDir = resolveOpenclawAgentSessionsDir(agentId);
+		if (!sessionsDir) continue;
 		let files: string[] = [];
 		try {
 			files = fs.readdirSync(sessionsDir).filter((f) => f.endsWith(".jsonl"));
@@ -632,7 +572,7 @@ export async function POST(request: Request) {
 	let rateLimitMetadata: DiagnosticRateLimitMetadata | null = null;
 
 	try {
-		const config = getAlertConfig();
+		const config = await loadAlertConfig();
 
 		if (!config.enabled) {
 			return NextResponse.json({
@@ -669,8 +609,13 @@ export async function POST(request: Request) {
 		notifications.push(...cronResults.notifications);
 
 		// Persist updated last-alert timestamps.
-		if (diagnostic.mode === "live_send") {
-			saveAlertConfig(config);
+		if (diagnostic.mode === "live_send" && config.lastAlerts) {
+			await updateAlertConfig((draft) => {
+				draft.lastAlerts = {
+					...(draft.lastAlerts || {}),
+					...config.lastAlerts,
+				};
+			});
 		}
 
 		return applyDiagnosticRateLimitHeaders(
