@@ -1,8 +1,3 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-	output: "standalone",
-	outputFileTracingExcludes: {
-		"/*": ["./next.config.mjs"],
-	},
-};
+import nextConfig from "./config/next.config.mjs";
+
 export default nextConfig;

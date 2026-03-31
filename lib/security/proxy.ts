@@ -1,0 +1,133 @@
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+
+// Simple in-memory rate limiting map for a single Edge isolate.
+// In a distributed environment, use a real store like Redis.
+const rateLimitMap = new Map<string, { count: number; lastReset: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 100;
+const RATE_LIMIT_BYPASS_PATH_PREFIXES = [
+	"/_next/static",
+	"/_next/image",
+	"/assets/",
+];
+const RATE_LIMIT_BYPASS_EXACT_PATHS = new Set(["/favicon.ico", "/icon.png"]);
+const STATIC_ASSET_PATH_PATTERN =
+	/\.(?:avif|gif|ico|jpe?g|mp3|ogg|png|svg|txt|wav|webm|webp)$/i;
+
+function shouldBypassRateLimit(request: NextRequest): boolean {
+	if (request.method === "HEAD" || request.method === "OPTIONS") {
+		return true;
+	}
+
+	const { pathname } = request.nextUrl;
+	if (RATE_LIMIT_BYPASS_EXACT_PATHS.has(pathname)) {
+		return true;
+	}
+
+	if (
+		RATE_LIMIT_BYPASS_PATH_PREFIXES.some((prefix) =>
+			pathname.startsWith(prefix),
+		)
+	) {
+		return true;
+	}
+
+	return STATIC_ASSET_PATH_PATTERN.test(pathname);
+}
+
+export function proxy(request: NextRequest) {
+	const response = NextResponse.next();
+
+	// 1. Security Headers
+	response.headers.set("X-Content-Type-Options", "nosniff");
+	response.headers.set("X-Frame-Options", "DENY");
+	response.headers.set("X-XSS-Protection", "1; mode=block");
+	response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+	response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+	response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
+	response.headers.set("Origin-Agent-Cluster", "?1");
+	response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
+	response.headers.set(
+		"Permissions-Policy",
+		"camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()",
+	);
+	response.headers.set("X-DNS-Prefetch-Control", "off");
+	if (request.nextUrl.protocol === "https:") {
+		response.headers.set(
+			"Strict-Transport-Security",
+			"max-age=63072000; includeSubDomains; preload",
+		);
+	}
+
+	// Basic Content Security Policy
+	const csp = `
+    default-src 'self';
+    base-uri 'self';
+    frame-ancestors 'none';
+    object-src 'none';
+    script-src 'self' 'unsafe-inline' 'unsafe-eval';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: blob:;
+    font-src 'self' data:;
+    connect-src 'self' ws: wss:;
+    form-action 'self';
+    frame-src 'none';
+    manifest-src 'self';
+    media-src 'self';
+    worker-src 'self' blob:;
+  `
+		.replace(/\s{2,}/g, " ")
+		.trim();
+	response.headers.set("Content-Security-Policy", csp);
+
+	if (shouldBypassRateLimit(request)) {
+		return response;
+	}
+
+	// 2. Rate Limiting (Basic)
+	// Using IP as the identifier. If behind Cloudflare, use CF-Connecting-IP
+	const ip =
+		request.headers.get("cf-connecting-ip") ??
+		request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+		"127.0.0.1";
+
+	const now = Date.now();
+	const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);
+
+	let record = rateLimitMap.get(ip);
+	if (!record || record.lastReset < windowStart) {
+		record = { count: 0, lastReset: windowStart };
+	}
+
+	record.count += 1;
+	rateLimitMap.set(ip, record);
+
+	if (record.count > MAX_REQUESTS_PER_WINDOW) {
+		return new NextResponse(
+			JSON.stringify({ error: "Too many requests, please try again later." }),
+			{
+				status: 429,
+				headers: {
+					"Content-Type": "application/json",
+					"Retry-After": "60",
+					"X-RateLimit-Limit": String(MAX_REQUESTS_PER_WINDOW),
+					"X-RateLimit-Remaining": "0",
+					"X-RateLimit-Reset": String(windowStart + RATE_LIMIT_WINDOW_MS),
+				},
+			},
+		);
+	}
+
+	response.headers.set("X-RateLimit-Limit", String(MAX_REQUESTS_PER_WINDOW));
+	response.headers.set(
+		"X-RateLimit-Remaining",
+		String(Math.max(0, MAX_REQUESTS_PER_WINDOW - record.count)),
+	);
+	response.headers.set(
+		"X-RateLimit-Reset",
+		String(windowStart + RATE_LIMIT_WINDOW_MS),
+	);
+
+	return response;
+}

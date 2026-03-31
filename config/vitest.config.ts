@@ -2,7 +2,10 @@ import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+const projectRoot = resolve(__dirname, "..");
+
 export default defineConfig({
+	root: projectRoot,
 	plugins: [react()],
 	test: {
 		environment: "jsdom",
@@ -19,7 +22,7 @@ export default defineConfig({
 				"app/api/skills/**/*.ts",
 				"app/components/operator-elevation-provider.tsx",
 				"app/components/operator-elevation-dialog.tsx",
-				"proxy.ts",
+				"lib/security/proxy.ts",
 			],
 			exclude: [
 				"**/*.test.{ts,tsx}",
@@ -33,7 +36,7 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			"@": resolve(__dirname, "./"),
+			"@": projectRoot,
 		},
 	},
 });

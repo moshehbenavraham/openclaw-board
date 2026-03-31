@@ -36,7 +36,7 @@ Next.js Middleware (rate limiting, security headers)
 ### Next.js Proxy (`proxy.ts`)
 - **Purpose**: Security headers and rate limiting for all routes
 - **Tech**: Next.js Proxy runtime
-- **Location**: `proxy.ts`
+- **Location**: root `proxy.ts` entrypoint with implementation in `lib/security/proxy.ts`
 
 ### API Route Handlers
 - **Purpose**: Server-side endpoints for config, health, stats, alerts, and operator actions

@@ -2,6 +2,11 @@
 
 A lightweight web dashboard for viewing all your [OpenClaw](https://github.com/openclaw/openclaw) agents, models, sessions, and operational status at a glance. No database required -- everything is derived directly from `~/.openclaw/openclaw.json` and local session files.
 
+## Project Origin
+
+- Historical source repo referenced in earlier README versions: [xmanrui/OpenClaw-bot-review](https://github.com/xmanrui/OpenClaw-bot-review) & original author credit: [xmanrui](https://github.com/xmanrui)
+- Related runtime/orchestrator project monitored by this dashboard: [openclaw/openclaw](https://github.com/openclaw/openclaw)
+
 ## Quick Start
 
 ```bash
@@ -19,25 +24,32 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 .
 |-- app/                   # Next.js App Router pages, layouts, and API routes
 |   |-- api/               # Server-side API route handlers
+|   |-- components/        # Shared UI (agent cards, operator elevation)
 |   |-- alerts/            # Alert center page
+|   |-- gateway/           # Catch-all gateway proxy route
 |   |-- models/            # Model list page
-|   |-- pixel-office/      # Pixel-art office page
+|   |-- pixel-office/      # Pixel-art office page (+ editor components)
 |   |-- sessions/          # Session management page
 |   |-- skills/            # Skill management page
 |   \-- stats/             # Statistics page
 |-- lib/                   # Shared server and client utilities
 |   |-- security/          # Auth, operator session, env flags, route guards
 |   \-- pixel-office/      # Pixel office engine and rendering
+|-- deploy/                # Deployment config (cloudflared, systemd units)
 |-- docs/                  # Project and security documentation
-|   |-- runbooks/          # Operational response procedures
-|-- scripts/               # Operational scripts (backup, etc.)
+|   |-- design/            # Feature design documents
+|   |-- plans/             # Implementation plans
+|   \-- runbooks/          # Operational response procedures
+|-- scripts/               # Build helpers and operational scripts
+|-- tests/                 # Playwright end-to-end tests
 |-- *.test.ts[x]           # Co-located unit, route, and component tests
-|-- public/                # Static assets
+|-- public/                # Static assets (platform logos)
 \-- .spec_system/          # Specification-driven development state
 ```
 
 ## Documentation
 
+- [Quick Start](docs/quick-start.md)
 - [Getting Started](docs/onboarding.md)
 - [Development Guide](docs/development.md)
 - [Architecture](docs/ARCHITECTURE.md)
@@ -58,7 +70,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - **Gateway Health** -- Real-time gateway status indicator with auto-polling
 - **Pixel Office** -- Animated pixel-art office where agents appear as walking, sitting characters
 - **Dark/Light Theme** -- Theme switcher in sidebar
-- **i18n** -- Chinese and English UI language switching
+- **i18n** -- Locale switcher (Traditional Chinese, Simplified Chinese, English)
 - **Auto Refresh** -- Configurable refresh interval (manual, 10s, 30s, 1min, 5min, 10min)
 - **Live Config** -- Reads directly from `~/.openclaw/openclaw.json`, no database needed
 
@@ -66,7 +78,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 - **Next.js 16** (App Router) -- UI shell and API routing
 - **React 19** -- Client-side operator interactions
-- **TypeScript 5** -- Type-safe route, utility, and component code
+- **TypeScript 6** -- Type-safe route, utility, and component code
 - **Tailwind CSS 4** -- Styling system
 - **Pino** -- Structured server-side logging
 - **Biome** -- Formatting and linting
@@ -97,6 +109,16 @@ OPENCLAW_CRON_STORE_PATH=cron-store/jobs.json
 
 Relative override values resolve from `OPENCLAW_HOME` and must stay within the
 approved OpenClaw runtime directories.
+
+Production deployments where the dashboard, workspace, skills, and codebase live
+in separate directories can set additional path references in `.env`:
+
+```bash
+KROXBOARD_PROJECT_DIR=/path/to/kroxboard/
+OPENCLAW_WORKSPACE_DIR=/path/to/workspace/
+OPENCLAW_CUSTOM_SKILLS_DIR=/path/to/.agents/skills/
+OPENCLAW_CODEBASE_DIR=/path/to/openclaw/
+```
 
 ### Operator Auth
 
@@ -149,7 +171,9 @@ docker run -d --name openclaw-dashboard \
   openclaw-dashboard
 ```
 
-See [Deployment Guide](docs/deployment.md) for Cloudflare Tunnel and production setup.
+The `deploy/` directory contains ready-made cloudflared and systemd unit
+templates. See [Deployment Guide](docs/deployment.md) for Cloudflare Tunnel and
+production setup.
 
 ## Project Status
 
@@ -158,3 +182,10 @@ Phase 03 closeout is complete. See [PRD](.spec_system/PRD/PRD.md) for the archiv
 ## License
 
 [MIT](LICENSE)
+
+## Upstream Author Contact
+
+Historical contact details preserved from the upstream README:
+
+- Xiaohongshu: [主页](https://xhslink.com/m/AsJKWgEBt1I)
+- WeChat: `xmanr123`

@@ -1,6 +1,6 @@
 {
 	"name": "openclaw-bot-review",
-	"version": "1.0.21",
+	"version": "1.0.22",
 	"private": true,
 	"license": "MIT",
 	"scripts": {
@@ -8,8 +8,9 @@
 		"build": "next build",
 		"postbuild": "node scripts/sync-standalone-assets.mjs",
 		"start": "next start",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"test": "vitest run --config config/vitest.config.ts",
+		"test:watch": "vitest --config config/vitest.config.ts",
+		"test:e2e": "playwright test --config config/playwright.config.ts",
 		"prepare": "husky"
 	},
 	"dependencies": {
