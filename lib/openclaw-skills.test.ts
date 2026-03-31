@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let tempDir = "";
 let tempPkgDir = "";
+let tempCustomSkillsDir: string | null = null;
 
 vi.mock("@/lib/openclaw-paths", () => ({
 	get OPENCLAW_HOME() {
@@ -12,6 +13,9 @@ vi.mock("@/lib/openclaw-paths", () => ({
 	},
 	resolveConfiguredOpenclawConfigFile() {
 		return path.join(tempDir, "openclaw.json");
+	},
+	resolveConfiguredOpenclawCustomSkillsDir() {
+		return tempCustomSkillsDir;
 	},
 	getOpenclawPackageCandidates: () => [tempPkgDir],
 }));
@@ -35,12 +39,17 @@ describe("openclaw-skills", () => {
 		vi.resetModules();
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "skills-test-home-"));
 		tempPkgDir = fs.mkdtempSync(path.join(os.tmpdir(), "skills-test-pkg-"));
+		tempCustomSkillsDir = null;
 		setupPkgDir();
 	});
 
 	afterEach(() => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 		fs.rmSync(tempPkgDir, { recursive: true, force: true });
+		if (tempCustomSkillsDir) {
+			fs.rmSync(tempCustomSkillsDir, { recursive: true, force: true });
+			tempCustomSkillsDir = null;
+		}
 	});
 
 	describe("listOpenclawSkills", () => {
@@ -94,6 +103,33 @@ description: A custom skill
 			expect(
 				result.skills.find((skill) => skill.id === "my-skill")?.source,
 			).toBe("custom");
+		});
+
+		it("scans custom skills from OPENCLAW_CUSTOM_SKILLS_DIR when configured", async () => {
+			tempCustomSkillsDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "skills-test-custom-"),
+			);
+			const customDir = path.join(tempCustomSkillsDir, "external-skill");
+			fs.mkdirSync(customDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(customDir, "SKILL.md"),
+				`---
+name: External Skill
+description: From configured custom directory
+---
+# External Skill
+`,
+			);
+			writeConfigFile([]);
+
+			const { listOpenclawSkills } = await import("@/lib/openclaw-skills");
+			const result = await listOpenclawSkills();
+			expect(
+				result.skills.find((skill) => skill.id === "external-skill"),
+			).toMatchObject({
+				id: "external-skill",
+				source: "custom",
+			});
 		});
 
 		it("scans extension skills and nested extension skills directories", async () => {
@@ -351,6 +387,24 @@ description: For testing
 			await expect(
 				getOpenclawSkillContent("unsupported", "whatever"),
 			).resolves.toBeNull();
+		});
+
+		it("reads custom skill content from OPENCLAW_CUSTOM_SKILLS_DIR when configured", async () => {
+			tempCustomSkillsDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "skills-test-custom-"),
+			);
+			const customDir = path.join(tempCustomSkillsDir, "external-skill");
+			fs.mkdirSync(customDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(customDir, "SKILL.md"),
+				"---\nname: External Skill\ndescription: From configured custom directory\n---\n# External Skill\n",
+			);
+			writeConfigFile([]);
+
+			const { getOpenclawSkillContent } = await import("@/lib/openclaw-skills");
+			const result = await getOpenclawSkillContent("custom", "external-skill");
+			expect(result?.skill.id).toBe("external-skill");
+			expect(result?.content).toContain("External Skill");
 		});
 	});
 });

@@ -4,6 +4,7 @@ import {
 	getOpenclawPackageCandidates,
 	OPENCLAW_HOME,
 	resolveConfiguredOpenclawConfigFile,
+	resolveConfiguredOpenclawCustomSkillsDir,
 } from "@/lib/openclaw-paths";
 import {
 	listBoundedDirectory,
@@ -45,6 +46,13 @@ const BUILTIN_TOOL_NAMES = new Set([
 ]);
 
 let openclawPackagePromise: Promise<string> | null = null;
+
+function getCustomSkillsDir(): string {
+	return (
+		resolveConfiguredOpenclawCustomSkillsDir() ??
+		path.join(OPENCLAW_HOME, "skills")
+	);
+}
 
 export interface SkillInfo {
 	id: string;
@@ -365,10 +373,7 @@ async function listResolvedOpenclawSkills(): Promise<{
 		}),
 	);
 
-	const customSkills = await scanSkillsDir(
-		path.join(OPENCLAW_HOME, "skills"),
-		"custom",
-	);
+	const customSkills = await scanSkillsDir(getCustomSkillsDir(), "custom");
 	const allSkills = [
 		...builtinSkills,
 		...extensionSkillGroups.flat(),
@@ -405,7 +410,7 @@ async function resolveSkillCandidatePaths(
 	}
 
 	if (source === "custom") {
-		return [path.join(OPENCLAW_HOME, "skills", id, "SKILL.md")];
+		return [path.join(getCustomSkillsDir(), id, "SKILL.md")];
 	}
 
 	if (!source.startsWith("extension:")) {

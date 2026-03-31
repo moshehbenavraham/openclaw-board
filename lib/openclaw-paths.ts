@@ -64,21 +64,32 @@ function hasConfiguredPathOverride(
 	return typeof value === "string" && value.trim().length > 0;
 }
 
-export function resolveConfiguredOpenclawHome(
-	openclawHome = process.env.OPENCLAW_HOME,
+function resolveConfiguredAbsolutePath(
+	value: string | null | undefined,
 	userHome = home,
 ): string | null {
-	const trimmed = openclawHome?.trim();
-	if (!trimmed) {
-		return normalizeAbsolutePath(DEFAULT_OPENCLAW_HOME);
+	if (!hasConfiguredPathOverride(value)) {
+		return null;
 	}
 
-	const expanded = expandHomePath(trimmed, userHome);
+	const expanded = expandHomePath(value.trim(), userHome);
 	if (!path.isAbsolute(expanded)) {
 		return null;
 	}
 
 	return normalizeAbsolutePath(expanded);
+}
+
+export function resolveConfiguredOpenclawHome(
+	openclawHome = process.env.OPENCLAW_HOME,
+	userHome = home,
+): string | null {
+	const configuredPath = resolveConfiguredAbsolutePath(openclawHome, userHome);
+	if (!configuredPath && !openclawHome?.trim()) {
+		return normalizeAbsolutePath(DEFAULT_OPENCLAW_HOME);
+	}
+
+	return configuredPath;
 }
 
 export function isPathWithinBoundary(
@@ -304,6 +315,20 @@ export function resolveConfiguredOpenclawCronStorePath(
 	);
 }
 
+export function resolveConfiguredOpenclawCustomSkillsDir(
+	rawCustomSkillsDir = process.env.OPENCLAW_CUSTOM_SKILLS_DIR,
+	userHome = home,
+): string | null {
+	return resolveConfiguredAbsolutePath(rawCustomSkillsDir, userHome);
+}
+
+export function resolveConfiguredOpenclawCodebaseDir(
+	rawCodebaseDir = process.env.OPENCLAW_CODEBASE_DIR,
+	userHome = home,
+): string | null {
+	return resolveConfiguredAbsolutePath(rawCodebaseDir, userHome);
+}
+
 function getOpenclawPathErrorMessage(code: OpenclawPathErrorCode): string {
 	switch (code) {
 		case "openclaw_home_invalid":
@@ -416,6 +441,7 @@ export function getOpenclawPackageCandidates(
 
 	return uniquePaths([
 		process.env.OPENCLAW_PACKAGE_DIR,
+		resolveConfiguredOpenclawCodebaseDir() ?? undefined,
 		path.join(home, ".local", "lib", "node_modules", "openclaw"),
 		npmPrefix ? path.join(npmPrefix, "node_modules", "openclaw") : undefined,
 		path.join(

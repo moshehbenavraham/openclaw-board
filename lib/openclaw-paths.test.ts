@@ -7,8 +7,10 @@ import {
 	isPathWithinBoundary,
 	isValidOpenclawAgentId,
 	resolveConfiguredOpenclawAlertsConfigFile,
+	resolveConfiguredOpenclawCodebaseDir,
 	resolveConfiguredOpenclawConfigFile,
 	resolveConfiguredOpenclawCronStorePath,
+	resolveConfiguredOpenclawCustomSkillsDir,
 	resolveConfiguredOpenclawHome,
 	resolveOpenclawAgentConfigDir,
 	resolveOpenclawAgentModelsFile,
@@ -52,6 +54,22 @@ describe("getOpenclawPackageCandidates", () => {
 		expect(
 			candidates.some((p) => p.includes(".local/lib/node_modules/openclaw")),
 		).toBe(true);
+	});
+
+	it("includes the configured codebase directory when provided", () => {
+		const originalCodebaseDir = process.env.OPENCLAW_CODEBASE_DIR;
+		process.env.OPENCLAW_CODEBASE_DIR = "/srv/openclaw";
+
+		try {
+			const candidates = getOpenclawPackageCandidates();
+			expect(candidates).toContain("/srv/openclaw");
+		} finally {
+			if (originalCodebaseDir === undefined) {
+				delete process.env.OPENCLAW_CODEBASE_DIR;
+			} else {
+				process.env.OPENCLAW_CODEBASE_DIR = originalCodebaseDir;
+			}
+		}
 	});
 });
 
@@ -155,6 +173,21 @@ describe("openclaw path boundaries", () => {
 		expect(() =>
 			resolveOpenclawConfigFileOrThrow("relative/openclaw-home"),
 		).toThrowError("OpenClaw runtime config path is invalid");
+	});
+
+	it("normalizes configured external directories for skills and codebase", () => {
+		expect(
+			resolveConfiguredOpenclawCustomSkillsDir("~/skills", "/home/tester"),
+		).toBe(path.resolve("/home/tester", "skills"));
+		expect(
+			resolveConfiguredOpenclawCodebaseDir("/srv/openclaw", "/home/tester"),
+		).toBe(path.resolve("/srv/openclaw"));
+		expect(
+			resolveConfiguredOpenclawCustomSkillsDir(
+				"relative/skills",
+				"/home/tester",
+			),
+		).toBeNull();
 	});
 
 	it("checks whether a path stays inside its approved boundary", () => {
