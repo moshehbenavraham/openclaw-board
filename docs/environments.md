@@ -14,6 +14,7 @@ Direct public origin exposure without an authenticated reverse proxy is unsuppor
 | Config | Development | Production |
 |--------|-------------|------------|
 | Bind address | `localhost:3000` | `127.0.0.1:3000` (behind Cloudflare Tunnel) |
+| `DASHBOARD_DEPLOYMENT_ENV` | `development` | `production` |
 | Cloudflare Access | Not required | Required (`DASHBOARD_CF_ACCESS_ENABLED=true`, approved-email OTP primary) |
 | Operator code | Required for sensitive routes | Required for sensitive routes |
 | Feature flags | All disabled by default | All disabled by default |
@@ -26,6 +27,7 @@ Direct public origin exposure without an authenticated reverse proxy is unsuppor
 - `DASHBOARD_OPERATOR_CODE` -- In-app operator challenge code for sensitive routes
 - `DASHBOARD_OPERATOR_COOKIE_SECRET` -- Signs the HTTP-only elevated session cookie (32+ chars)
 - `DASHBOARD_OPERATOR_SESSION_HOURS` -- Elevated session duration (max 12)
+- `DASHBOARD_DEPLOYMENT_ENV` -- Explicit deployment identity (`development`, `staging`, or `production`)
 
 ### Production Only
 

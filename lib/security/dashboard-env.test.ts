@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
 	DashboardEnvError,
 	parseDashboardAuthEnv,
+	parseDashboardDeploymentEnvironment,
+	resolveDashboardDeploymentEnvironment,
 } from "@/lib/security/dashboard-env";
 
 const BASE_ENV = {
 	NODE_ENV: "test",
+	DASHBOARD_DEPLOYMENT_ENV: "development",
 	DASHBOARD_HOST: "board.example.com",
 	DASHBOARD_ALLOWED_EMAILS: "operator@example.com,Operator@example.com",
 	DASHBOARD_CF_ACCESS_ENABLED: "true",
@@ -103,5 +106,64 @@ describe("parseDashboardAuthEnv", () => {
 				DASHBOARD_CF_ACCESS_ENABLED: "yes",
 			} as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
+	});
+
+	it("ignores invalid deployment metadata", () => {
+		const parsed = parseDashboardAuthEnv({
+			...BASE_ENV,
+			DASHBOARD_DEPLOYMENT_ENV: "prod",
+		} as NodeJS.ProcessEnv);
+
+		expect(parsed.allowedEmails).toEqual(["operator@example.com"]);
+		expect(parsed.operatorCodeRequired).toBe(true);
+	});
+});
+
+describe("parseDashboardDeploymentEnvironment", () => {
+	it("accepts documented deployment values", () => {
+		expect(
+			parseDashboardDeploymentEnvironment({
+				DASHBOARD_DEPLOYMENT_ENV: "production",
+			} as NodeJS.ProcessEnv),
+		).toBe("production");
+		expect(
+			parseDashboardDeploymentEnvironment({
+				DASHBOARD_DEPLOYMENT_ENV: "staging",
+			} as NodeJS.ProcessEnv),
+		).toBe("staging");
+	});
+
+	it("falls back to production when NODE_ENV=production", () => {
+		expect(
+			parseDashboardDeploymentEnvironment({
+				NODE_ENV: "production",
+			} as NodeJS.ProcessEnv),
+		).toBe("production");
+	});
+
+	it("falls back to development outside production", () => {
+		expect(parseDashboardDeploymentEnvironment({} as NodeJS.ProcessEnv)).toBe(
+			"development",
+		);
+	});
+
+	it("rejects invalid deployment values", () => {
+		expect(() =>
+			parseDashboardDeploymentEnvironment({
+				DASHBOARD_DEPLOYMENT_ENV: "prod",
+			} as NodeJS.ProcessEnv),
+		).toThrow(DashboardEnvError);
+	});
+});
+
+describe("resolveDashboardDeploymentEnvironment", () => {
+	it("falls back without throwing when the configured value is invalid", () => {
+		const resolved = resolveDashboardDeploymentEnvironment({
+			NODE_ENV: "production",
+			DASHBOARD_DEPLOYMENT_ENV: "prod",
+		} as NodeJS.ProcessEnv);
+
+		expect(resolved.value).toBe("production");
+		expect(resolved.warning).toContain("DASHBOARD_DEPLOYMENT_ENV");
 	});
 });

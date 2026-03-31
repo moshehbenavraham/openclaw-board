@@ -119,6 +119,13 @@ OPENCLAW_CUSTOM_SKILLS_DIR=/path/to/.agents/skills/
 OPENCLAW_CODEBASE_DIR=/path/to/openclaw/
 ```
 
+Set an explicit deployment marker in `.env` so health checks and operational
+tooling can distinguish local, staging, and production instances:
+
+```bash
+DASHBOARD_DEPLOYMENT_ENV=development
+```
+
 ### Operator Auth
 
 Sensitive dashboard actions use a two-layer operator boundary:

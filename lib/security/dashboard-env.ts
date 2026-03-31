@@ -2,6 +2,14 @@ const DEFAULT_CF_ACCESS_EMAIL_HEADER = "CF-Access-Authenticated-User-Email";
 const DEFAULT_CF_ACCESS_JWT_HEADER = "CF-Access-Jwt-Assertion";
 const MAX_OPERATOR_SESSION_HOURS = 12;
 const MIN_SESSION_HOURS = 1;
+const DASHBOARD_DEPLOYMENT_ENVIRONMENTS = [
+	"development",
+	"staging",
+	"production",
+] as const;
+
+export type DashboardDeploymentEnvironment =
+	(typeof DASHBOARD_DEPLOYMENT_ENVIRONMENTS)[number];
 
 export interface DashboardAuthEnv {
 	dashboardHost: string | null;
@@ -16,6 +24,11 @@ export interface DashboardAuthEnv {
 	operatorCode: string;
 	operatorCookieSecret: string;
 	operatorSessionHours: number;
+}
+
+export interface DashboardDeploymentEnvironmentResolution {
+	value: DashboardDeploymentEnvironment;
+	warning: string | null;
 }
 
 export class DashboardEnvError extends Error {
@@ -93,6 +106,53 @@ function parseRequiredSecret(
 		);
 	}
 	return trimmed;
+}
+
+function getDefaultDashboardDeploymentEnvironment(
+	source: NodeJS.ProcessEnv,
+): DashboardDeploymentEnvironment {
+	return source.NODE_ENV === "production" ? "production" : "development";
+}
+
+export function parseDashboardDeploymentEnvironment(
+	source: NodeJS.ProcessEnv = process.env,
+): DashboardDeploymentEnvironment {
+	const trimmed = source.DASHBOARD_DEPLOYMENT_ENV?.trim().toLowerCase();
+	if (!trimmed) {
+		return getDefaultDashboardDeploymentEnvironment(source);
+	}
+
+	if (
+		DASHBOARD_DEPLOYMENT_ENVIRONMENTS.includes(
+			trimmed as DashboardDeploymentEnvironment,
+		)
+	) {
+		return trimmed as DashboardDeploymentEnvironment;
+	}
+
+	throw new DashboardEnvError(
+		'DASHBOARD_DEPLOYMENT_ENV must be one of "development", "staging", or "production"',
+	);
+}
+
+export function resolveDashboardDeploymentEnvironment(
+	source: NodeJS.ProcessEnv = process.env,
+): DashboardDeploymentEnvironmentResolution {
+	try {
+		return {
+			value: parseDashboardDeploymentEnvironment(source),
+			warning: null,
+		};
+	} catch (error) {
+		if (!(error instanceof DashboardEnvError)) {
+			throw error;
+		}
+
+		return {
+			value: getDefaultDashboardDeploymentEnvironment(source),
+			warning: error.message,
+		};
+	}
 }
 
 export function parseDashboardAuthEnv(
