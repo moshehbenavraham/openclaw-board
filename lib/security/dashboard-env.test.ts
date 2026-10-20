@@ -39,7 +39,7 @@ describe("parseDashboardAuthEnv", () => {
 			parseDashboardAuthEnv({
 				...BASE_ENV,
 				DASHBOARD_OPERATOR_SESSION_HOURS: "13",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 
@@ -48,7 +48,7 @@ describe("parseDashboardAuthEnv", () => {
 			parseDashboardAuthEnv({
 				...BASE_ENV,
 				DASHBOARD_CF_ACCESS_SESSION_HOURS: "2.5",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 
@@ -57,7 +57,7 @@ describe("parseDashboardAuthEnv", () => {
 			parseDashboardAuthEnv({
 				...BASE_ENV,
 				DASHBOARD_OPERATOR_COOKIE_SECRET: "short",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 
@@ -66,7 +66,7 @@ describe("parseDashboardAuthEnv", () => {
 			parseDashboardAuthEnv({
 				...BASE_ENV,
 				DASHBOARD_ALLOWED_EMAILS: ",,,",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 
@@ -76,7 +76,7 @@ describe("parseDashboardAuthEnv", () => {
 			DASHBOARD_OPERATOR_CODE_REQUIRED: "false",
 			DASHBOARD_OPERATOR_CODE: "",
 			DASHBOARD_OPERATOR_COOKIE_SECRET: "",
-		} as NodeJS.ProcessEnv);
+		} as unknown as NodeJS.ProcessEnv);
 		expect(parsed.operatorCodeRequired).toBe(false);
 		expect(parsed.operatorCode).toBe("");
 	});
@@ -104,7 +104,7 @@ describe("parseDashboardAuthEnv", () => {
 			parseDashboardAuthEnv({
 				...BASE_ENV,
 				DASHBOARD_CF_ACCESS_ENABLED: "yes",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 
@@ -112,7 +112,7 @@ describe("parseDashboardAuthEnv", () => {
 		const parsed = parseDashboardAuthEnv({
 			...BASE_ENV,
 			DASHBOARD_DEPLOYMENT_ENV: "prod",
-		} as NodeJS.ProcessEnv);
+		} as unknown as NodeJS.ProcessEnv);
 
 		expect(parsed.allowedEmails).toEqual(["operator@example.com"]);
 		expect(parsed.operatorCodeRequired).toBe(true);
@@ -124,12 +124,12 @@ describe("parseDashboardDeploymentEnvironment", () => {
 		expect(
 			parseDashboardDeploymentEnvironment({
 				DASHBOARD_DEPLOYMENT_ENV: "production",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toBe("production");
 		expect(
 			parseDashboardDeploymentEnvironment({
 				DASHBOARD_DEPLOYMENT_ENV: "staging",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toBe("staging");
 	});
 
@@ -137,21 +137,21 @@ describe("parseDashboardDeploymentEnvironment", () => {
 		expect(
 			parseDashboardDeploymentEnvironment({
 				NODE_ENV: "production",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toBe("production");
 	});
 
 	it("falls back to development outside production", () => {
-		expect(parseDashboardDeploymentEnvironment({} as NodeJS.ProcessEnv)).toBe(
-			"development",
-		);
+		expect(
+			parseDashboardDeploymentEnvironment({} as unknown as NodeJS.ProcessEnv),
+		).toBe("development");
 	});
 
 	it("rejects invalid deployment values", () => {
 		expect(() =>
 			parseDashboardDeploymentEnvironment({
 				DASHBOARD_DEPLOYMENT_ENV: "prod",
-			} as NodeJS.ProcessEnv),
+			} as unknown as NodeJS.ProcessEnv),
 		).toThrow(DashboardEnvError);
 	});
 });
@@ -161,7 +161,7 @@ describe("resolveDashboardDeploymentEnvironment", () => {
 		const resolved = resolveDashboardDeploymentEnvironment({
 			NODE_ENV: "production",
 			DASHBOARD_DEPLOYMENT_ENV: "prod",
-		} as NodeJS.ProcessEnv);
+		} as unknown as NodeJS.ProcessEnv);
 
 		expect(resolved.value).toBe("production");
 		expect(resolved.warning).toContain("DASHBOARD_DEPLOYMENT_ENV");
